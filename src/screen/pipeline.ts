@@ -6,8 +6,15 @@ import { loadCheckpoint } from "../data/checkpoint.js";
 import type { Availability, QuoteSlice } from "../data/types.js";
 import type { ProfileArg, ProfileName, ProfilesConfig } from "./types.js";
 import profilesConfig from "../../config/profiles.json" with { type: "json" };
+import detectorsConfigJson from "../../config/detectors.json" with { type: "json" };
+import { computeIndicators } from "./indicators/computeIndicators.js";
+import { percentileRank } from "./indicators/percentile.js";
+import type { DetectorsConfig, IndicatorFlags } from "./indicators/types.js";
+import { allDetectors } from "./detectors/index.js";
+import type { DetectorResult } from "./detectors/IDetector.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
+const detectorsConfig = detectorsConfigJson as DetectorsConfig;
 
 function evaluateProfileGate(
   quote: QuoteSlice,
@@ -51,6 +58,12 @@ export interface ScreenOutputSymbol {
   ohlcvTradingDays?: number;
   ohlcvAvailability: Availability;
   fetchedAt: string;
+  /** All computed technical indicators (TASK_CARD_02 SCOPE 1). Null fields mean insufficient OHLCV history, never fabricated. */
+  flags: IndicatorFlags;
+  /** Detector ids this symbol triggered (TASK_CARD_02 SCOPE 2-4). Can be more than one, or empty. */
+  buckets: string[];
+  /** detectorId -> 0..100 within-bucket sort score (see each detector's own comment for its formula). Only present for triggered buckets. */
+  bucketScores: Record<string, number>;
 }
 
 export interface ScreenRunResult {
@@ -63,6 +76,9 @@ export interface ScreenRunResult {
     quoteFetchFailureCount: number;
     quoteFetchFailures: string[];
     gatesPassedCount: number;
+    /** TASK_CARD_02 DONE-WHEN: each bucket must have a non-zero hit count, or this run's output must explain why. */
+    detectorSummary: Record<string, { triggeredCount: number }>;
+    zeroHitBucketsNote: string | null;
     elapsedMs: number;
   };
   symbols: ScreenOutputSymbol[];
@@ -110,9 +126,47 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   await runEnrichmentPhase(gatePassed.map((g) => g.symbol), checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase B done: ${Object.keys(checkpoint.enrichResults).length} enriched total, ${checkpoint.enrichFailures.length} failed total`);
 
+  console.error(`[screen] Phase indicators: computing technical indicators for ${gatePassed.length} symbols...`);
+  const flagsBySymbol = new Map<string, IndicatorFlags>();
+  for (const { symbol } of gatePassed) {
+    const ohlcv = checkpoint.enrichResults[symbol]?.ohlcv ?? [];
+    flagsBySymbol.set(symbol, computeIndicators(ohlcv, detectorsConfig));
+  }
+
+  // RS percentile ranking is cross-symbol ("全宇宙" = every symbol in this
+  // run's gate-passed set, not segmented by STANDARD/SMALL_SPEC), so it
+  // happens after every symbol's single-symbol indicators are computed.
+  const threeMonthReturns = [...flagsBySymbol.values()].map((f) => f.threeMonthReturn).filter((v): v is number => v !== null);
+  const sixMonthReturns = [...flagsBySymbol.values()].map((f) => f.sixMonthReturn).filter((v): v is number => v !== null);
+  for (const flags of flagsBySymbol.values()) {
+    if (flags.threeMonthReturn !== null) {
+      flags.rs3MonthPercentile = percentileRank(threeMonthReturns, flags.threeMonthReturn);
+    }
+    if (flags.sixMonthReturn !== null) {
+      flags.rs6MonthPercentile = percentileRank(sixMonthReturns, flags.sixMonthReturn);
+    }
+  }
+
+  console.error(`[screen] Phase detectors: running ${allDetectors.length} detectors...`);
+  const detectorSummary: Record<string, { triggeredCount: number }> = {};
+  for (const d of allDetectors) detectorSummary[d.id] = { triggeredCount: 0 };
+
   const symbols: ScreenOutputSymbol[] = gatePassed.map(({ symbol, profile, speculative, quote }) => {
     const raw = universeBySymbol.get(symbol)!;
     const enrich = checkpoint.enrichResults[symbol];
+    const flags = flagsBySymbol.get(symbol)!;
+
+    const results: DetectorResult[] = allDetectors.map((d) => d.detect(flags, profile, detectorsConfig));
+    const buckets: string[] = [];
+    const bucketScores: Record<string, number> = {};
+    for (const r of results) {
+      if (r.triggered) {
+        buckets.push(r.detectorId);
+        if (r.strengthScore !== null) bucketScores[r.detectorId] = r.strengthScore;
+        detectorSummary[r.detectorId].triggeredCount += 1;
+      }
+    }
+
     return {
       symbol,
       securityName: raw.securityName,
@@ -132,8 +186,17 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       ohlcvTradingDays: enrich?.ohlcvTradingDays,
       ohlcvAvailability: enrich?.ohlcvAvailability ?? "不可得",
       fetchedAt: quote.fetchedAt,
+      flags,
+      buckets,
+      bucketScores,
     };
   });
+
+  const zeroHitBuckets = Object.entries(detectorSummary).filter(([, v]) => v.triggeredCount === 0).map(([id]) => id);
+  const zeroHitBucketsNote =
+    zeroHitBuckets.length === 0
+      ? null
+      : `Bucket(s) with zero hits this run: ${zeroHitBuckets.join(", ")}. This can reflect a genuinely quiet/extreme market regime for that setup type rather than a bug - see TASK_CARD_02 report for this run's manual review of whether that is plausible.`;
 
   return {
     runMeta: {
@@ -145,6 +208,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       quoteFetchFailureCount: checkpoint.quoteFailures.length,
       quoteFetchFailures: checkpoint.quoteFailures,
       gatesPassedCount: symbols.length,
+      detectorSummary,
+      zeroHitBucketsNote,
       elapsedMs: Date.now() - t0,
     },
     symbols,
