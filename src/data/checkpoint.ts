@@ -2,6 +2,14 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { EnrichSlice, QuoteSlice } from "./types.js";
 
 export interface CheckpointState {
+  /**
+   * Free-text label, not a partition key. The checkpoint is shared across
+   * all --profile invocations (standard/small_spec/both): Phase A quote
+   * data is profile-independent (the whole exclusion-gated universe needs
+   * it to evaluate any profile gate), and Phase B enrichment keyed by
+   * symbol is reused across runs, so e.g. running --profile both after
+   * --profile standard does not refetch symbols already enriched.
+   */
   profile: string;
   startedAt: string;
   updatedAt: string;
@@ -29,11 +37,7 @@ export function loadCheckpoint(path: string, profile: string): CheckpointState {
     return freshCheckpoint(profile);
   }
   const raw = readFileSync(path, "utf-8");
-  const state = JSON.parse(raw) as CheckpointState;
-  if (state.profile !== profile) {
-    return freshCheckpoint(profile);
-  }
-  return state;
+  return JSON.parse(raw) as CheckpointState;
 }
 
 /** Atomic write: write to a temp file then rename, so a crash mid-write cannot corrupt the checkpoint. */
