@@ -13,16 +13,29 @@ function nowIso(): string {
  * regularMarketPrice) for a batch of symbols in a single request.
  * Throws on total failure so the caller's retry/backoff can handle it;
  * per-symbol data absence within a successful batch is tagged, not thrown.
+ *
+ * validateResult:false is required here: yahoo-finance2's strict schema
+ * validation throws for the whole batch call if even one symbol has an
+ * unusual quoteType (e.g. MONEYMARKET) missing fields its schema expects -
+ * discovered live during TASK_CARD_01 (a single such symbol failed an
+ * entire 200-symbol batch, wrongly marking all 200 as failed). We only
+ * read the handful of fields we need and defensively tag missing ones as
+ * 不可得 below, so disabling validation does not weaken correctness.
  */
 export async function fetchQuoteBatch(symbols: string[]): Promise<QuoteSlice[]> {
-  const results = await yahooFinance.quote(symbols, { return: "array" });
+  const results = (await yahooFinance.quote(symbols, { return: "array" }, { validateResult: false })) as Array<{
+    symbol: string;
+    marketCap?: number;
+    averageDailyVolume3Month?: number;
+    regularMarketPrice?: number;
+    quoteType?: string;
+    fullExchangeName?: string;
+  }>;
   const bySymbol = new Map(results.map((r) => [r.symbol, r]));
   const fetchedAt = nowIso();
 
   return symbols.map((symbol) => {
-    const q = bySymbol.get(symbol) as
-      | { marketCap?: number; averageDailyVolume3Month?: number; regularMarketPrice?: number; quoteType?: string; fullExchangeName?: string }
-      | undefined;
+    const q = bySymbol.get(symbol);
 
     const marketCap = q?.marketCap;
     const avgVol = q?.averageDailyVolume3Month;
