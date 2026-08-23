@@ -1,103 +1,40 @@
-# AI Project Template
+# Atlas Bootstrap Final — 一次性完整说明书
 
-A lightweight AI-first project starter for safe, consistent, high-signal software work with coding agents.
+Atlas:美股注意力配置引擎。应用层(确定性筛选,全美股宇宙 → 四桶检测 → 候选 ≤5 + 观察哨 ≤10)× 研究层(Atlas Radar 辩护状 + Atlas Red Team 分级攻击)× 前向账本闭环。与 Stock Research Cockpit 串联:Atlas 答"看哪些",Cockpit 答"这只怎样"。
 
-This template is:
-- a project memory system
-- an agent operating guide
-- a reusable rules source
-- a small skill starter
-- a controlled automation framework
+## 包内导航
 
-This template is not:
-- a large skills marketplace
-- a dependency-heavy framework
-- a replacement for human approval
-- a place to blindly vendor third-party skills
+```
+README.md                  ← 本文件
+SETUP.md                   ← 从零到运行态的总装手册(先读这个)
+constitution/              ← 四份宪法(进 repo,冻结法律)
+  ATLAS_v1_0.md                v1.0 蓝本(14 模块架构)
+  ATLAS_AMENDMENT_NO2_v1_1.md  第二号修正案(数据现实化/双层架构/前向追踪)
+  ATLAS_MEMO_NO3_ADJUDICATIONS.md  第三号备忘录(Top5/全市场宇宙/独立repo等)
+  ATLAS_MEMO_NO4_FINAL_ADJUDICATIONS.md  第四号备忘录(四桶/双档/辩护状/红队分级/观察哨)
+  ATLAS_AMENDMENT_NO3_SECTOR_EVENT.md      第三号修正案(板块资金异动+事件窗口)
+cards/                     ← 六张任务卡(进 repo,Claude Code 逐卡执行)
+  TASK_CARD_01 骨架+双档宇宙+数据接入
+  TASK_CARD_02 技术三桶检测器
+  TASK_CARD_03 基本面旗标+板块+环境
+  TASK_CARD_03_PATCH 板块资金足迹聚合+事件窗口(修正案三)
+  TASK_CARD_04 机构蓄势代理桶
+  TASK_CARD_05 选取器+观察哨+双payload+HTML报告+账本
+  TASK_CARD_06 收官+后置路线图(13F/仪表盘/MCP/Cockpit反哺)
+projects/                  ← claude.ai 侧(两份 Instructions 全文+组建指南)
+sop/                       ← 你的操作手册(每周期/每月)
+```
 
-## Quickstart
+## 三条心法(从 Cockpit 继承,刻在这里)
 
-Fastest agent entry: [START_HERE.md](START_HERE.md).
+1. **系统的产品不是每份报告,是六个月后被数据校准过的你。**
+2. **输入侧(数据/prompt)有天花板,真正缺口在输出侧(纪律/情绪/仓位)。** 红队和账本存在的意义大于任何指标。
+3. **拒绝比添加更重要。** 已拒绝清单:回测、组合管理、数据超市、付费数据、自动交易、13F(暂)、提醒系统、固定日程。每个新想法过"一次点击"审计再说。
 
-Full guide: [New Project AI Startup Guide](docs/new-project-ai-startup-guide.md).
+## 一句诚实的话(对应你的 F21)
 
-1. Create a new repository from this template.
-2. Fill in `ai/project_overview.md`, `ai/current_state.md`, `ai/architecture.md`, and `ai/coding_rules.md`.
-3. Ask your AI agent to read `AGENTS.md` first.
-4. Work in this loop: read context, plan, implement, test, review, update memory.
-5. For installs, pushes, pulls, deletes, secrets, GitHub changes, or global config changes, require explicit user approval.
+你要的"超全能选股器"——评级、风险、介入区间、无效化位、多引擎综合——结构上全在辩护状摘要卡里,一张不少。但这台机器承诺的是**过程质量**:纪律化的筛选、有证据的攻击、全量归档的前向验证。"中短期爆发"是它的猎物,不是它的合同。四桶里真正的爆发候选会被它捞进你的视野,能不能变成收益,取决于漏斗的下半段:Cockpit 深研 + 你的执行纪律。系统管到"值得注意"为止,这是它诚实的边界,也是它能长期活着的原因。
 
-## AI Workflow
+## 启动顺序
 
-1. Read `AGENTS.md`.
-2. Read `ai/project_overview.md` and `ai/current_state.md`.
-3. Inspect relevant files before editing.
-4. Make minimal changes.
-5. Avoid hallucinated APIs, paths, packages, and commands.
-6. Run available checks.
-7. Review security and regression risk.
-8. Update `ai/current_state.md`, `ai/decisions.md`, or `ai/risk_register.md` when meaningful.
-
-## Source Of Truth
-
-- `AGENTS.md`: root operating guide for all agents.
-- `ai/`: long-term project memory.
-- `.ruler/`: reusable rule source of truth.
-- `skills/`: canonical project skill sources.
-- `adapters/`: instructions for Cursor, Claude, Codex, Gemini, and other tools.
-
-Tool-specific folders are adapters only. Do not let `.cursor`, `.claude`, `.codex`, or Gemini configs become the source of truth.
-
-## Communication Default
-
-Agent output should be short, clean, and practical. Use bullets and next steps. Avoid filler and long theory unless requested. Security warnings and approval prompts must stay clear, even when using terse modes.
-
-## Approval Required
-
-Agents must ask before:
-- `git push` or `git pull`
-- deleting files, branches, repos, or data
-- installing packages, apps, extensions, MCP servers, plugins, or skills
-- running unknown scripts
-- changing global config
-- modifying secrets, tokens, API keys, credentials, or environment variables
-- creating or changing GitHub repositories
-- publishing releases or deploying
-- changing billing, cloud, or account settings
-
-## Third-Party Skills Warning
-
-Treat third-party skills, MCP servers, shell scripts, and install commands as untrusted supply-chain components until reviewed. Do not pipe remote scripts into a shell unless the user explicitly approves after reviewing the source.
-
-## Included Third-Party Skills
-
-- `skills/caveman`: sourced from `JuliusBrussee/caveman`, MIT license.
-- `skills/vibesec-skill`: sourced from `BehiSecc/VibeSec-Skill`, Apache-2.0 license.
-
-See `THIRD_PARTY_NOTICES.md`.
-
-## Recommended External Resources
-
-Core standards:
-- AGENTS.md: https://github.com/openai/agents.md
-- Ruler: https://github.com/intellectronica/ruler
-
-Docs and context:
-- Context7: https://github.com/upstash/context7
-
-Evaluation:
-- Promptfoo: https://github.com/promptfoo/promptfoo
-
-Security:
-- Semgrep: https://github.com/semgrep/semgrep
-- OSV-Scanner: https://github.com/google/osv-scanner
-- Snyk Agent Scan: https://github.com/snyk/agent-scan
-
-Token discipline:
-- RTK: https://github.com/rtk-ai/rtk
-- Caveman: https://github.com/JuliusBrussee/caveman
-
-Workflow inspiration:
-- Superpowers: https://github.com/obra/superpowers
-- gstack: https://github.com/garrytan/gstack
-- baoyu-skills: https://github.com/JimLiu/baoyu-skills
+SETUP.md Step 0 至 8,照做即可。第一条 Claude Code 指令已写好在 Step 5,直接贴。
