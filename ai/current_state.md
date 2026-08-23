@@ -1,21 +1,45 @@
 # Current State
 
 ## Completed
-- Template initialized; governance, constitution, and cards merged into repo (see ai/decisions.md).
+- Template initialized; governance, constitution, and cards merged into repo.
 - ai/project_overview.md initialized from Atlas idea + constitution cross-check.
-- constitution/ (5 files) read in full: ATLAS_v1_0, AMENDMENT_NO2_v1_1, AMENDMENT_NO3_SECTOR_EVENT, MEMO_NO3_ADJUDICATIONS, MEMO_NO4_FINAL_ADJUDICATIONS.
-- Network preconditions for TASK_CARD_01 verified: nasdaqtrader.com symbol directory reachable (HTTP 200); Yahoo Finance chart endpoint reachable with browser User-Agent (HTTP 200, bare requests get 429).
+- constitution/ (5 files) read in full and treated as frozen law.
+- TASK_CARD_01 - Layer 1 skeleton: dual-profile universe definer + yahoo-finance2
+  data access + screening pipeline shell + ledger placeholder. DONE (see
+  ai/decisions.md 2026-08-23 entries for the notable engineering decisions and
+  the one correctness bug found and fixed along the way).
+  - 5 scope-item commits (skeleton/universe/data/screen/ledger) + 1 bug-fix
+    commit (validateResult:false), all on master.
+  - Live full-universe validation run: 8531 raw NYSE+NASDAQ symbols -> 5460
+    post-exclusion -> STANDARD 2920 passed (>=1500 required), SMALL_SPEC 432,
+    BOTH 3352 (>=2000 required). 0 quote-fetch failures, 0 enrichment
+    failures across the full run.
+  - Checkpoint/resume verified both live (cross-profile reuse: small_spec
+    and both runs needed 0 duplicate fetches) and via an isolated interrupt
+    simulation (partial-then-resume, unchanged timestamps proving no
+    refetch).
+  - 10-symbol spot check (both manual sample and an automated full-3352-set
+    check) found zero exclusion-gate leaks and 100% correct speculative
+    flagging.
 
 ## In Progress
-- TASK_CARD_01 — Layer 1 skeleton: dual-profile universe definer + yahoo-finance2 data access + screening pipeline shell. Zero scoring logic in this card.
+- Nothing active. Awaiting user direction on TASK_CARD_02 (explicitly not
+  started per the user's instruction to stop after TASK_CARD_01).
 
 ## Next Priorities
-1. Execute TASK_CARD_01 SCOPE items 1-6 end to end, committing per scope item (skeleton / universe / data / screen / ledger).
-2. Run all three profile params (standard / small_spec / both) against the live full universe to satisfy DONE-WHEN counts.
-3. STOP after TASK_CARD_01 DONE-WHEN passes and report — do not proceed to TASK_CARD_02 without explicit user instruction.
+1. User to review TASK_CARD_01 results and decide whether to proceed to
+   TASK_CARD_02.
+2. Undecided: full per-symbol OHLCV bars currently live only in
+   output/checkpoint.json (233MB, gitignored) - a future card should decide
+   their permanent storage/access pattern before detectors need to consume
+   them.
 
 ## Blockers
-- None yet. `npm install` requires explicit user approval before running (.ruler/rules/approval-required-actions.md) — will pause and ask when reached.
+- None.
 
 ## Temporary Notes
+- output/checkpoint.json is large (~233MB after this validation run) and
+  gitignored; it is a reusable local cache (Phase A quote data + Phase B
+  enrichment), not a deliverable. Deleting it is safe but forces a full
+  network refetch on the next run.
 - Keep this file current after meaningful work.
