@@ -1,8 +1,11 @@
 {
-  "batchSize": 25,
-  "delayMsBetweenBatches": 1200,
+  "quoteBatchSize": 200,
+  "delayMsBetweenQuoteBatches": 800,
+  "enrichConcurrency": 25,
+  "delayMsBetweenEnrichBatches": 1200,
   "maxRetriesPerSymbol": 3,
   "backoffBaseMs": 1000,
   "backoffMultiplier": 2,
-  "minHistoricalTradingDays": 260
+  "minHistoricalTradingDays": 260,
+  "chartLookbackCalendarDays": 400
 }
