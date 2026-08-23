@@ -10,7 +10,8 @@
   "scripts": {
     "screen": "tsx src/screen/cli.ts",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.2",

@@ -1,0 +1,33 @@
+{
+  "indicators": {
+    "smaWindows": [20, 50, 200],
+    "rsiPeriod": 14,
+    "atrPeriod": 14,
+    "week52TradingDays": 252,
+    "volumeAvgWindowShort": 20,
+    "volumeAvgWindowLong": 50,
+    "obvSlopeWindow": 20,
+    "bollinger": { "period": 20, "stdDev": 2, "widthPercentileWindow": 120 },
+    "relativeStrength": { "threeMonthTradingDays": 63, "sixMonthTradingDays": 126 },
+    "sidewaysBase": { "bandPct": 0.08 }
+  },
+  "detectorA_momentumBreakout": {
+    "pctOf52WeekHigh": 0.95,
+    "volumeRatioThreshold": 1.8,
+    "volumeRatioLookbackDays": 5,
+    "rs6MonthPercentileThreshold": 80
+  },
+  "detectorB_volatilityCompression": {
+    "bbWidthPercentileThreshold": 20,
+    "proximityTo52WeekHighPct": 0.15,
+    "sidewaysBaseMinDays": 30,
+    "volumeContractionRatioThreshold": 1.0
+  },
+  "detectorC_oversoldReversal": {
+    "rsiThresholdStandard": 30,
+    "rsiThresholdSmallSpec": 25,
+    "week52PositionThreshold": 0.30,
+    "stopLossVolumeRatioThreshold": 2.0,
+    "stopLossLookbackDays": 10
+  }
+}
