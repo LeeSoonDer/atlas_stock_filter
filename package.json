@@ -1,0 +1,15 @@
+{
+  "name": "atlas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Atlas Layer 1 - deterministic on-demand screener (Attention Allocation Engine, Application Layer). No LLM calls in this repo.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "screen": "tsx src/screen/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  }
+}

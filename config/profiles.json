@@ -1,0 +1,14 @@
+{
+  "STANDARD": {
+    "minMarketCap": 300000000,
+    "maxMarketCap": null,
+    "minAvgDollarVolume": 5000000,
+    "speculative": false
+  },
+  "SMALL_SPEC": {
+    "minMarketCap": 50000000,
+    "maxMarketCap": 300000000,
+    "minAvgDollarVolume": 1000000,
+    "speculative": true
+  }
+}

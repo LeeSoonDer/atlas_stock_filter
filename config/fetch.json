@@ -1,0 +1,8 @@
+{
+  "batchSize": 25,
+  "delayMsBetweenBatches": 1200,
+  "maxRetriesPerSymbol": 3,
+  "backoffBaseMs": 1000,
+  "backoffMultiplier": 2,
+  "minHistoricalTradingDays": 260
+}
