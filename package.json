@@ -11,5 +11,14 @@
     "screen": "tsx src/screen/cli.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "yahoo-finance2": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
   }
 }
