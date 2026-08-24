@@ -11,74 +11,62 @@
 - TASK_CARD_03 - fundamental flags + sector strength + market regime. DONE,
   independently verified. Local commits, not yet pushed.
 - TASK_CARD_04 - fourth detector bucket (Institutional Accumulation Proxy):
-  Form 4 insider clusters (SEC EDGAR), institutional-ownership trend,
-  short interest (FINRA), Detector D. DONE. 6 commits + this memory-update
-  commit, all local, not yet pushed.
-  - src/data/insiders: SEC EDGAR daily-index scan + Form 4 fetch/parse.
-    Requires an email-format User-Agent (SEC_EDGAR_USER_AGENT env var,
-    documented placeholder fallback) - verified live that a descriptive
-    string or URL alone gets 403. Rate-limited to 8 req/s (under SEC's
-    10 req/s cap) via a single serialized inter-request delay.
-  - src/data/short: FINRA short interest via a free CSV file (NOT the
-    'consolidated' API, which requires a token/is not free) - see
-    ai/decisions.md. Settlement date discovered by walking backward day
-    by day (FINRA's exact schedule isn't programmatically discoverable).
-  - src/screen/institutions: institutional-ownership trend, persisted
-    cross-run in checkpoint.institutionalHistory. Universally 不可得 on
-    this repo's first-ever run (no prior snapshot exists yet) - expected,
-    disclosed, not a bug.
-  - src/screen/detectors/institutionalAccumulation.ts: Detector D, needs
-    >=2 of {insiderCluster, institutionalTrend==='up', short-interest
-    decline-or-squeeze, OBV slope positive}.
-  - FULL LIVE VALIDATION (90-day lookback, both profiles, cold start):
-    31,963 relevant Form-4 filings found, 31,954 parsed (9 were
-    duplicate accession paths across scanned days - benign, explained,
-    not data loss), 0 failures, 0 rate-limit bans. Took 161 minutes
-    end-to-end (includes a one-time floatShares cache-migration
-    backfill for all 3352 symbols from earlier cards). detectorSummary:
-    momentum_breakout=27, volatility_compression_setup=316,
-    oversold_reversal=25, institutional_accumulation_proxy=512 - all 4
-    buckets (the full v1 detector set) non-zero. 200 real insider
-    clusters found project-wide (171 within the gate-passed universe).
-  - Independently re-verified 3 real insider-cluster filings (GWRS/Cohn
-    Andrew M., ABCL/Montalbano John S., ACDC's 3-owner Wilks filing) by
-    re-fetching directly from SEC, bypassing the pipeline entirely -
-    exact match on owner name(s) and transaction code/shares/price each
-    time. Substitutes for DONE-WHEN's "对EDGAR网页人工核对" (no browser
-    access in this environment), disclosed as such.
-  - Subsequent runs are cheap: insiderFilingResults/insiderDailyIndexCache
-    accumulate forever (SEC data is immutable once published) - only new
-    days/filings get fetched going forward.
+  Form 4 insider clusters, institutional-ownership trend, short interest,
+  Detector D. DONE, independently verified. Local commits, not yet pushed.
+- TASK_CARD_03_PATCH - sector capital footprint aggregation (Part A) +
+  event window flag (Part B). DONE except DONE-WHEN item 5 (deferred to
+  CARD 05 - see below). 3 commits, all local, not yet pushed.
+  - src/screen/sector_footprint: 4 hit-density metrics per SPDR sector
+    (institutional_accumulation_proxy rate, insider_cluster rate,
+    significant-short-interest-decline rate, volatility_compression_setup
+    rate), anomaly = density >= 2x cross-sector median AND count >= 3
+    (both config-driven, config/sector.json - a new file per the card's
+    explicit naming). A sector below 5 valid symbols is skipped, never
+    force-aggregated. Output is facts-only (numbers/booleans/dimension
+    names) by construction - no generated text exists to leak direction.
+  - src/screen/event_window: extends CARD 03's earningsSoon into a full
+    event_window list within a 180-day window (config/card03.json's new
+    eventWindow.windowDays - the outer bound of all 3 legal holding
+    periods). Only 'earnings' is populated - lockup_expiry has no free
+    data source (verified, not guessed) and shareholder_meeting/
+    product_launch need Finnhub (no key configured); both explicitly
+    permitted to be skipped by the card's own "尽力而为,不可得则跳过".
+  - Live full-run validation (cached from CARD 04's backfill, 34s):
+    Financial Services flagged footprint_anomaly on volatilityCompression
+    (density 0.232 vs median 0.066, 129 hits) - hand-verified correct.
+    672 candidates got a populated eventWindow; spot-checked AAON's entry
+    against independently recomputed daysUntil arithmetic - exact match.
+    Grepped full output for directional/predictive Chinese phrases -
+    zero matches.
+  - DONE-WHEN item 5 ("板块异动与事件旗标均进入HTML报告...与PAYLOAD") NOT
+    satisfied: neither the HTML report nor the PAYLOAD generator exist
+    yet - both are explicitly CARD 05's scope. Disclosed before starting
+    work, not discovered after. sectorFootprints/eventWindow are already
+    in the pipeline output for CARD 05 to consume directly once it exists.
 
 ## In Progress
-- Nothing active. Awaiting user direction on TASK_CARD_05 (explicitly not
-  started per the established stop-after-each-card convention).
+- Nothing active. Awaiting user direction (independent verification of
+  this patch not yet dispatched as of this write - about to be).
 
 ## Next Priorities
-1. User to review TASK_CARD_04 results and decide whether to proceed to
-   TASK_CARD_05.
-2. git push CARD_02/03/04's commits once the user confirms (only CARD 01
-   is on origin/master as of this writing).
-3. TASK_CARD_03_PATCH now unblocked (CARD_04's institutional-bucket data
-   exists) - could be attempted whenever the user wants it, since its
-   only stated prerequisite (CARD 03 + CARD 04 both DONE) is now met.
+1. Dispatch independent verification of TASK_CARD_03_PATCH.
+2. User to review results and decide next step: TASK_CARD_05 (which would
+   also complete DONE-WHEN item 5's HTML/PAYLOAD integration), or
+   something else.
+3. git push CARD_02/03/04/03_PATCH's commits once the user confirms (only
+   CARD 01 is on origin/master as of this writing).
 4. Undecided: full per-symbol OHLCV bars still live only in
    output/checkpoint.json (now includes insider/institutional data too,
-   244MB+ and growing), gitignored - a future card should decide their
-   permanent storage/access pattern.
+   very large), gitignored - a future card should decide their permanent
+   storage/access pattern.
 
 ## Blockers
-- None. (TASK_CARD_03_PATCH's blocker is resolved as of this card.)
+- None (TASK_CARD_03_PATCH's DONE-WHEN item 5 is a disclosed deferral,
+  not a blocker on the rest of this patch's work).
 
 ## Temporary Notes
-- output/checkpoint.json is large (244MB+) and gitignored - a reusable
-  local cache across ALL cards' data (quotes/enrichment/fundamentals/
-  insider filings/institutional history), not a deliverable. Deleting it
-  is safe but forces a full network refetch, INCLUDING the ~2.5-3 hour
-  EDGAR Form-4 backfill - warn the user before ever suggesting this.
-- Lesson learned this card: piping a long-running background command
-  through `| tail -N` hides ALL output until the process exits (tail
-  buffers to EOF, it does not stream) - looks identical to "stuck."
-  Don't do that for progress-observable background runs; let output go
-  directly to the captured file and Read it incrementally instead.
+- output/checkpoint.json is large and gitignored - a reusable local
+  cache across ALL cards' data. Deleting it forces a full network
+  refetch, INCLUDING the ~2.5-3 hour EDGAR Form-4 backfill - warn the
+  user before ever suggesting this.
 - Keep this file current after meaningful work.

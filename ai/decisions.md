@@ -175,3 +175,33 @@ Reason: cross-referencing SEC's daily Form-4 index against our 3352-symbol unive
 Tradeoff: every subsequent `npm run screen` run is cheap (only scans new days and fetches filings not already in the permanent insiderFilingResults/insiderDailyIndexCache - both accumulate forever, never re-fetched) - this cost is paid exactly once per environment, not per run.
 
 Future implications: if the checkpoint is ever deleted/reset, this ~2.5-3 hour cost recurs. Worth calling out to the user before any future checkpoint-clearing operation.
+
+## 2026-08-24 - TASK_CARD_03_PATCH: DONE-WHEN item 5 (HTML report + PAYLOAD integration) deferred to CARD 05
+
+Decision: executed Parts A (sector footprint) and B (event window) fully, but explicitly did NOT attempt DONE-WHEN item 5 ("板块异动与事件旗标均进入HTML报告...与PAYLOAD").
+
+Reason: neither the HTML report nor the PAYLOAD generator exist in this repo - both are explicitly CARD 05's scope (src/report/html, src/report/payload, per TASK_CARD_05.md SCOPE 3-5). This patch's own SCOPE only names src/screen/sector_footprint and src/screen/event_window (computation directories), never touching src/report. Building throwaway HTML/PAYLOAD scaffolding now would either duplicate or conflict with CARD 05's actual planned design.
+
+Tradeoff: none - this mirrors the same treatment given to the whole patch being blocked on CARD 04 earlier (disclosed up front, not silently skipped).
+
+Future implications: revisit once CARD 05 exists - sectorFootprints (runMeta) and eventWindow (per-candidate) are already computed and available in the pipeline output for CARD 05's HTML/PAYLOAD code to consume directly.
+
+## 2026-08-24 - TASK_CARD_03_PATCH: config/sector.json created as a new file, not merged into card03.json
+
+Decision: Part A's thresholds live in a new config/sector.json, not as a new section inside the existing config/card03.json.
+
+Reason: the card's own SCOPE text explicitly names "config/sector.json" (not card03.json), and the patch's header frames itself as "append-only,不改动CARD 03已定范围" - a new file is a cleaner literal match than extending an already-shipped card's config file, even though the latter would also have been purely additive.
+
+Tradeoff: none identified.
+
+Future implications: none blocking.
+
+## 2026-08-24 - TASK_CARD_03_PATCH: lockup_expiry and shareholder_meeting/product_launch event types are permanently unpopulated in this implementation
+
+Decision: computeEventWindow only ever returns 'earnings' entries.
+
+Reason: verified live (grepped yahoo-finance2's complete type definitions) that no lockup/IPO-related field exists anywhere in the package. Guessing an expiry date from firstTradeDate + an assumed standard lockup period length would fabricate a specific date the system doesn't actually know (real lockup terms vary by company and can have early-release provisions) - this would violate the project's zero-fabrication principle, so it was deliberately not attempted. shareholder_meeting/product_launch would need a news/calendar data source (e.g. Finnhub) that has no configured API key. The card's own wording ("若IPO标的,profile可得则算" and "尽力而为,不可得则跳过") explicitly anticipates and permits this outcome.
+
+Tradeoff: event_window is currently earnings-only in practice, even though its type system supports all 4 event types.
+
+Future implications: if a Finnhub key is ever configured, shareholder_meeting/product_launch could be added without a type/schema change - only a new data-fetch + merge step.
