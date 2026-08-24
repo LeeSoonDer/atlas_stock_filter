@@ -285,3 +285,13 @@ Reason: no access to Atlas Radar (an external tool the user operates) or a brows
 Tradeoff: does not catch anything only a human's eyes or Atlas Radar's own ingestion logic would catch (e.g., a rendering glitch, an Atlas Radar parsing quirk).
 
 Future implications: the user should open the generated atlas_report_*.html in a real browser and paste the atlas_payload_*.txt into Atlas Radar at least once to close this verification gap.
+
+## 2026-08-24 - TASK_CARD_06: SCOPE 1's real-cycle issue list explicitly accepted as empty, not blocked on
+
+Decision: SCOPE 1 ("真实周期问题清单逐条修复(你提供清单,Claude Code 执行)") was closed with zero items, by the project owner's explicit direction, rather than by finding or fabricating friction points.
+
+Reason: this card's own header states its prerequisite as "CARD 05 验收通过 + 你已完成至少一次真实周期(含 Radar 与 Red Team)" - literally reading that, SCOPE 1 depends on a real screen -> Atlas Radar -> Atlas Red Team cycle having already happened, and on the project owner having personally noticed friction during it. No such cycle's artifacts exist in this repo (no sop/SOP_WEEKLY.md, no record of a PAYLOAD having been pasted into Radar or a DISSENT PAYLOAD run through Red Team - consistent with TASK_CARD_05's own disclosed CANNOT-VERIFY items above). Asked the project owner directly rather than guessing; they chose to accept SCOPE 1 as empty and proceed with the rest of the card now, rather than pausing CARD 06 until a real cycle happens.
+
+Tradeoff: v1.0-layer1 ships without having been pressure-tested through one real end-to-end cycle including the two external LLM reasoning environments. Any friction that a real cycle would have surfaced (PAYLOAD formatting issues Radar chokes on, DISSENT PAYLOAD skeleton fields that turn out to be awkward in practice, etc.) remains undiscovered.
+
+Future implications: once the project owner does run a real cycle, any friction found should still get logged and fixed - just as a normal ai/decisions.md entry / follow-up commit rather than retroactively reopening this card. TASK_CARD_06_AND_ROADMAP.md's post-v1 cards (07/08, CARD 04b) remain available for exactly this kind of iteration.
