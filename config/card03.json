@@ -1,0 +1,20 @@
+{
+  "fundamentals": {
+    "revenueGrowthAccelDecelEpsilon": 0.02,
+    "grossMarginFlatEpsilon": 0.001,
+    "highLeverageDebtToCashRatio": 3,
+    "earningsSoonWindowDays": 14
+  },
+  "sector": {
+    "oneMonthTradingDays": 21,
+    "threeMonthTradingDays": 63,
+    "tailwindRankCount": 3,
+    "headwindRankCount": 3
+  },
+  "regime": {
+    "spySmaWindow": 200,
+    "spySmaSlopeWindow": 20,
+    "vixAvgWindow": 20,
+    "vixElevatedThreshold": 25
+  }
+}
