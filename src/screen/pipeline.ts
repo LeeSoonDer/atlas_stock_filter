@@ -1,20 +1,67 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { buildUniverse } from "../universe/index.js";
 import type { ExclusionReason } from "../universe/types.js";
-import { runQuotePhase, runEnrichmentPhase } from "../data/batchFetcher.js";
+import { runQuotePhase, runEnrichmentPhase, runFundamentalsPhase } from "../data/batchFetcher.js";
 import { loadCheckpoint } from "../data/checkpoint.js";
-import type { Availability, QuoteSlice } from "../data/types.js";
+import { fetchChartBars } from "../data/yahooClient.js";
+import type { Availability, FundamentalsSlice, QuoteSlice } from "../data/types.js";
 import type { ProfileArg, ProfileName, ProfilesConfig } from "./types.js";
 import profilesConfig from "../../config/profiles.json" with { type: "json" };
 import detectorsConfigJson from "../../config/detectors.json" with { type: "json" };
+import card03ConfigJson from "../../config/card03.json" with { type: "json" };
 import { computeIndicators } from "./indicators/computeIndicators.js";
 import { percentileRank } from "./indicators/percentile.js";
+import { trailingReturn } from "./indicators/relativeStrength.js";
+import { cleanBars } from "./indicators/series.js";
 import type { DetectorsConfig, IndicatorFlags } from "./indicators/types.js";
 import { allDetectors } from "./detectors/index.js";
 import type { DetectorResult } from "./detectors/IDetector.js";
+import { rankSectors } from "./sector/sectorStrength.js";
+import { SECTOR_TO_ETF } from "./sector/types.js";
+import type { SectorConfig, SectorRanking, SectorReturns } from "./sector/types.js";
+import { computeMarketRegime } from "./regime/marketRegime.js";
+import type { MarketRegimeSnapshot, RegimeConfig } from "./regime/types.js";
+import type { FundamentalsConfig } from "./fundamentals/types.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
+const card03Config = card03ConfigJson as SectorConfig & RegimeConfig & FundamentalsConfig & {
+  dataLookback: { spyCalendarDays: number; vixCalendarDays: number; sectorEtfCalendarDays: number };
+};
+
+/**
+ * TASK_CARD_03 SCOPE 2/3: fetches SPY, ^VIX, and the 11 SPDR sector ETFs
+ * (13 lightweight chart-only calls, not checkpointed - cheap enough to
+ * redo every run) and assembles the sector rankings + market regime
+ * snapshot. Computed once per run, independent of --profile.
+ */
+async function fetchMarketContext(): Promise<{ sectorRankings: SectorRanking[]; marketRegime: MarketRegimeSnapshot }> {
+  const lb = card03Config.dataLookback;
+  const [spyBars, vixBars, ...etfBarsList] = await Promise.all([
+    fetchChartBars("SPY", lb.spyCalendarDays),
+    fetchChartBars("^VIX", lb.vixCalendarDays),
+    ...Object.values(SECTOR_TO_ETF).map((etf) => fetchChartBars(etf, lb.sectorEtfCalendarDays)),
+  ]);
+
+  const spyCloses = cleanBars(spyBars).map((b) => b.close);
+  const vixCloses = cleanBars(vixBars).map((b) => b.close);
+
+  const sectorEtfEntries = Object.entries(SECTOR_TO_ETF);
+  const sectorReturns: SectorReturns[] = sectorEtfEntries.map(([sector, etf], i) => {
+    const closes = cleanBars(etfBarsList[i]).map((b) => b.close);
+    return {
+      sector,
+      etf,
+      oneMonthReturn: trailingReturn(closes, card03Config.sector.oneMonthTradingDays),
+      threeMonthReturn: trailingReturn(closes, card03Config.sector.threeMonthTradingDays),
+    };
+  });
+
+  const sectorRankings = rankSectors(sectorReturns, card03Config);
+  const marketRegime = computeMarketRegime(spyCloses, vixCloses, sectorRankings, card03Config);
+
+  return { sectorRankings, marketRegime };
+}
 
 function evaluateProfileGate(
   quote: QuoteSlice,
@@ -64,6 +111,17 @@ export interface ScreenOutputSymbol {
   buckets: string[];
   /** detectorId -> 0..100 within-bucket sort score (see each detector's own comment for its formula). Only present for triggered buckets. */
   bucketScores: Record<string, number>;
+  /** TASK_CARD_03 SCOPE 2. Undefined only if `sector` itself is unavailable (4/3352 symbols as of TASK_CARD_03's validation run). */
+  sectorRank?: SectorRanking;
+  /**
+   * TASK_CARD_03 SCOPE 1. Only present for the "候选" pool (symbols with
+   * buckets.length > 0) - undefined here means "not evaluated because
+   * out of this card's population scope", which is a different meaning
+   * from the constitutional 不可得 tags *inside* this object (which mean
+   * "evaluated, but the underlying data wasn't available"). See
+   * ai/decisions.md for why the full universe isn't used.
+   */
+  fundamentals?: FundamentalsSlice;
 }
 
 export interface ScreenRunResult {
@@ -79,6 +137,12 @@ export interface ScreenRunResult {
     /** TASK_CARD_02 DONE-WHEN: each bucket must have a non-zero hit count, or this run's output must explain why. */
     detectorSummary: Record<string, { triggeredCount: number }>;
     zeroHitBucketsNote: string | null;
+    /** TASK_CARD_03 SCOPE 1: size of the "候选" pool that received fundamental-flag enrichment (bucket-triggered symbols only - see ai/decisions.md). */
+    fundamentalsCandidatePoolSize: number;
+    fundamentalsFetchFailures: string[];
+    /** TASK_CARD_03 SCOPE 2/3. */
+    sectorRankings: SectorRanking[];
+    marketRegime: MarketRegimeSnapshot;
     elapsedMs: number;
   };
   symbols: ScreenOutputSymbol[];
@@ -198,6 +262,25 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       ? null
       : `Bucket(s) with zero hits this run: ${zeroHitBuckets.join(", ")}. This can reflect a genuinely quiet/extreme market regime for that setup type rather than a bug - see TASK_CARD_02 report for this run's manual review of whether that is plausible.`;
 
+  // TASK_CARD_03 SCOPE 1: fundamentals only for the "候选" pool (bucket-
+  // triggered symbols), not the full gate-passed universe - see
+  // ai/decisions.md. Phase C mirrors Phase B's checkpoint/resume shape.
+  const candidatePool = symbols.filter((s) => s.buckets.length > 0).map((s) => s.symbol);
+  const candidatePoolSet = new Set(candidatePool);
+  console.error(`[screen] Phase fundamentals: ${candidatePool.length} candidate-pool symbols...`);
+  await runFundamentalsPhase(candidatePool, checkpoint, CHECKPOINT_PATH);
+  console.error(`[screen] Phase fundamentals done: ${Object.keys(checkpoint.fundamentalsResults).length} fetched total, ${checkpoint.fundamentalsFailures.length} failed total`);
+
+  console.error(`[screen] Phase market context: sector rankings + regime snapshot...`);
+  const { sectorRankings, marketRegime } = await fetchMarketContext();
+  const sectorRankBySector = new Map(sectorRankings.map((r) => [r.sector, r]));
+
+  const enrichedSymbols: ScreenOutputSymbol[] = symbols.map((s) => ({
+    ...s,
+    sectorRank: s.sector !== undefined ? sectorRankBySector.get(s.sector) : undefined,
+    fundamentals: candidatePoolSet.has(s.symbol) ? checkpoint.fundamentalsResults[s.symbol] : undefined,
+  }));
+
   return {
     runMeta: {
       timestamp: new Date().toISOString(),
@@ -210,9 +293,13 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       gatesPassedCount: symbols.length,
       detectorSummary,
       zeroHitBucketsNote,
+      fundamentalsCandidatePoolSize: candidatePool.length,
+      fundamentalsFetchFailures: checkpoint.fundamentalsFailures,
+      sectorRankings,
+      marketRegime,
       elapsedMs: Date.now() - t0,
     },
-    symbols,
+    symbols: enrichedSymbols,
   };
 }
 

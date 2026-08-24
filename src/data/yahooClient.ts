@@ -58,6 +58,29 @@ export async function fetchQuoteBatch(symbols: string[]): Promise<QuoteSlice[]> 
   });
 }
 
+/**
+ * Chart-only fetch for market-context tickers (SPY, ^VIX, the 11 SPDR
+ * sector ETFs - TASK_CARD_03 SCOPE 2/3), which need OHLCV history but
+ * not quoteSummary's profile/institutional/financial modules. Returns
+ * an empty array on failure rather than throwing - callers (a small,
+ * fixed list of tickers computed once per run) can decide how to
+ * degrade per-ticker rather than aborting the whole regime snapshot.
+ */
+export async function fetchChartBars(symbol: string, lookbackCalendarDays: number): Promise<OHLCVBar[]> {
+  try {
+    const result = await yahooFinance.chart(symbol, {
+      period1: new Date(Date.now() - lookbackCalendarDays * 24 * 60 * 60 * 1000),
+      period2: new Date(),
+      interval: "1d",
+      return: "array",
+    });
+    return toOhlcvBars(result.quotes);
+  } catch (err) {
+    console.error(`[chart] ${symbol} failed: ${(err as Error).message}`);
+    return [];
+  }
+}
+
 function toOhlcvBars(quotes: Array<{ date: Date; open: number | null; high: number | null; low: number | null; close: number | null; volume: number | null; adjclose?: number | null }>): OHLCVBar[] {
   return quotes.map((q) => ({
     date: q.date.toISOString().slice(0, 10),

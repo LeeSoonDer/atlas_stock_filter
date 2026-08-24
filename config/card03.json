@@ -16,5 +16,10 @@
     "spySmaSlopeWindow": 20,
     "vixAvgWindow": 20,
     "vixElevatedThreshold": 25
+  },
+  "dataLookback": {
+    "spyCalendarDays": 400,
+    "vixCalendarDays": 90,
+    "sectorEtfCalendarDays": 120
   }
 }
