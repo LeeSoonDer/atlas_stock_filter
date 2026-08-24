@@ -36,10 +36,15 @@ import type { FundamentalsConfig } from "./fundamentals/types.js";
 import { computeInstitutionalTrend } from "./institutions/institutionalTrend.js";
 import type { InstitutionalTrendConfig } from "./institutions/types.js";
 import type { InsiderClusterConfig } from "../data/insiders/types.js";
+import { aggregateSectorFootprints } from "./sector_footprint/aggregateSectorFootprint.js";
+import type { FootprintConfig, SectorFootprint, SymbolFootprintInput } from "./sector_footprint/types.js";
+import sectorFootprintConfigJson from "../../config/sector.json" with { type: "json" };
+import { computeEventWindow } from "./event_window/computeEventWindow.js";
+import type { EventWindowConfig, EventWindowEntry } from "./event_window/types.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
-const card03Config = card03ConfigJson as SectorConfig & RegimeConfig & FundamentalsConfig & {
+const card03Config = card03ConfigJson as SectorConfig & RegimeConfig & FundamentalsConfig & EventWindowConfig & {
   dataLookback: { spyCalendarDays: number; vixCalendarDays: number; sectorEtfCalendarDays: number };
 };
 const card04Config = card04ConfigJson as InsiderClusterConfig &
@@ -47,6 +52,7 @@ const card04Config = card04ConfigJson as InsiderClusterConfig &
     shortInterest: { significantDeclinePercent: number; squeezeMinFloatPercent: number; settlementDateWalkBackDays: number };
     detectorD: { minConditionsRequired: number };
   };
+const sectorFootprintConfig = sectorFootprintConfigJson as FootprintConfig;
 /** Reshapes card04Config's threshold values into DetectorsConfig's shape at wire-up time - card04.json stays the single source of truth for its own numbers (see Detector D's own file comment). */
 const combinedDetectorsConfig: DetectorsConfig = {
   ...detectorsConfig,
@@ -150,6 +156,13 @@ export interface ScreenOutputSymbol {
    * ai/decisions.md for why the full universe isn't used.
    */
   fundamentals?: FundamentalsSlice;
+  /**
+   * TASK_CARD_03_PATCH Part B. Only present for the "候选" pool (same
+   * population as `fundamentals`, since it reuses fundamentals.earningsDate
+   * directly) - undefined means "not evaluated", an empty array means
+   * "evaluated, no schedule-certain event within the window".
+   */
+  eventWindow?: EventWindowEntry[];
 }
 
 export interface ScreenRunResult {
@@ -184,6 +197,8 @@ export interface ScreenRunResult {
       lagDays: number | null;
       recordCount: number;
     };
+    /** TASK_CARD_03_PATCH Part A. One entry per SPDR sector (11), computed over the full gate-passed universe. */
+    sectorFootprints: SectorFootprint[];
     elapsedMs: number;
   };
   symbols: ScreenOutputSymbol[];
@@ -369,15 +384,35 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   await runFundamentalsPhase(candidatePool, checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase fundamentals done: ${Object.keys(checkpoint.fundamentalsResults).length} fetched total, ${checkpoint.fundamentalsFailures.length} failed total`);
 
+  // TASK_CARD_03_PATCH Part A: over the full gate-passed universe (not
+  // the candidate pool), reusing the buckets/flags already computed above.
+  console.error(`[screen] Phase sector footprint: aggregating over ${symbols.length} symbols...`);
+  const footprintInputs: SymbolFootprintInput[] = symbols.map((s) => ({
+    sector: s.sector,
+    institutionalAccumulationHit: s.buckets.includes("institutional_accumulation_proxy"),
+    insiderCluster: s.flags.insiderCluster === true,
+    shortInterestDeclineHit:
+      s.flags.shortInterestChangePercent !== null && s.flags.shortInterestChangePercent <= -card04Config.shortInterest.significantDeclinePercent,
+    volatilityCompressionHit: s.buckets.includes("volatility_compression_setup"),
+  }));
+  const sectorFootprints = aggregateSectorFootprints(footprintInputs, Object.keys(SECTOR_TO_ETF), sectorFootprintConfig);
+  const anomalyCount = sectorFootprints.filter((f) => f.footprintAnomaly).length;
+  console.error(`[screen] Phase sector footprint done: ${anomalyCount} sector(s) flagged footprint_anomaly`);
+
   console.error(`[screen] Phase market context: sector rankings + regime snapshot...`);
   const { sectorRankings, marketRegime } = await fetchMarketContext();
   const sectorRankBySector = new Map(sectorRankings.map((r) => [r.sector, r]));
 
-  const enrichedSymbols: ScreenOutputSymbol[] = symbols.map((s) => ({
-    ...s,
-    sectorRank: s.sector !== undefined ? sectorRankBySector.get(s.sector) : undefined,
-    fundamentals: candidatePoolSet.has(s.symbol) ? checkpoint.fundamentalsResults[s.symbol] : undefined,
-  }));
+  const eventWindowNow = new Date();
+  const enrichedSymbols: ScreenOutputSymbol[] = symbols.map((s) => {
+    const fundamentals = candidatePoolSet.has(s.symbol) ? checkpoint.fundamentalsResults[s.symbol] : undefined;
+    return {
+      ...s,
+      sectorRank: s.sector !== undefined ? sectorRankBySector.get(s.sector) : undefined,
+      fundamentals,
+      eventWindow: fundamentals ? computeEventWindow(fundamentals.earningsDate, eventWindowNow, card03Config) : undefined,
+    };
+  });
 
   return {
     runMeta: {
@@ -407,6 +442,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
         lagDays: shortInterestFile?.lagDays ?? null,
         recordCount: shortInterestFile?.records.size ?? 0,
       },
+      sectorFootprints,
       elapsedMs: Date.now() - t0,
     },
     symbols: enrichedSymbols,
