@@ -1,0 +1,7 @@
+{
+  "footprintAggregation": {
+    "anomalyMedianMultiplier": 2,
+    "anomalyMinAbsoluteCount": 3,
+    "minSymbolsForAggregation": 5
+  }
+}
