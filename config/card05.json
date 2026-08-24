@@ -1,0 +1,6 @@
+{
+  "select": {
+    "maxCandidates": 5,
+    "maxWatchlist": 10
+  }
+}
