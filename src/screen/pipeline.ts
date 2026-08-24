@@ -70,6 +70,32 @@ const card04Config = card04ConfigJson as InsiderClusterConfig &
   };
 const sectorFootprintConfig = sectorFootprintConfigJson as FootprintConfig;
 const card05Config = card05ConfigJson as SelectConfig & FmpConfig;
+
+/**
+ * TASK_CARD_06 SCOPE 2: maps each named pipeline segment (marked via
+ * mark() at that segment's completion, in runScreen below) to one of the
+ * card's 4 macro timing categories (宇宙/抓取/检测/报告), so a single run's
+ * console output and runMeta.timingBreakdown both answer "where did the
+ * time go" without needing per-phase log-scraping.
+ */
+const PHASE_CATEGORY: Record<string, "universe" | "fetch" | "detect" | "report"> = {
+  universe: "universe",
+  fetch_quote: "fetch",
+  fetch_enrichment: "fetch",
+  fetch_insiders_index: "fetch",
+  fetch_insiders_filings: "fetch",
+  fetch_institutions: "fetch",
+  fetch_short_interest: "fetch",
+  detect_indicators: "detect",
+  detect_detectors: "detect",
+  fetch_fundamentals: "fetch",
+  detect_sector_footprint: "detect",
+  fetch_market_context: "fetch",
+  detect_select: "detect",
+  fetch_fmp: "fetch",
+  report_generate: "report",
+  report_ledger: "report",
+};
 /** Reshapes card04Config's threshold values into DetectorsConfig's shape at wire-up time - card04.json stays the single source of truth for its own numbers (see Detector D's own file comment). */
 const combinedDetectorsConfig: DetectorsConfig = {
   ...detectorsConfig,
@@ -217,6 +243,32 @@ export interface ScreenRunResult {
     /** TASK_CARD_03_PATCH Part A. One entry per SPDR sector (11), computed over the full gate-passed universe. */
     sectorFootprints: SectorFootprint[];
     elapsedMs: number;
+    /**
+     * TASK_CARD_06 SCOPE 2: this run's total elapsed time broken into the
+     * card's 4 macro categories (宇宙 universe build, 抓取 all network
+     * fetch phases, 检测 indicator/detector/selection computation, 报告
+     * PAYLOAD/HTML/ledger generation). `detail` has the same numbers at
+     * per-segment granularity for deeper debugging.
+     */
+    timingBreakdown: {
+      universeMs: number;
+      fetchMs: number;
+      detectMs: number;
+      reportMs: number;
+      detail: Record<string, number>;
+    };
+    /**
+     * TASK_CARD_06 SCOPE 2: which symbols failed, and at which fetch
+     * phase(s), across this run. Only phases that fail per-symbol (quote,
+     * enrichment, fundamentals) are attributed here - insider filing
+     * failures are keyed by SEC accession path, not by symbol, so they
+     * stay in `insiders.filingsFailed` above rather than being force-
+     * mapped into a symbol they may not cleanly resolve to.
+     */
+    failureAttribution: {
+      bySymbol: Record<string, string[]>;
+      totalDistinctSymbolsFailed: number;
+    };
   };
   symbols: ScreenOutputSymbol[];
   /** TASK_CARD_05 SCOPE 2/3/4/5/6: the selector's output and the paths of the three generated report artifacts. */
@@ -243,9 +295,15 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const t0 = Date.now();
   mkdirSync("output", { recursive: true });
 
+  // TASK_CARD_06 SCOPE 2: one mark() per named segment's completion; the
+  // gap between consecutive marks is that segment's elapsed time.
+  const marks: Array<{ label: string; t: number }> = [{ label: "start", t: t0 }];
+  const mark = (label: string) => marks.push({ label, t: Date.now() });
+
   console.error(`[screen] building universe...`);
   const { rawCount, excludedCount, excludedByReason, universe } = await buildUniverse();
   console.error(`[screen] universe: ${rawCount} raw -> ${universe.length} post-exclusion (${excludedCount} excluded)`);
+  mark("universe");
 
   const checkpoint = loadCheckpoint(CHECKPOINT_PATH, "ATLAS_UNIVERSE");
   const allSymbols = universe.map((u) => u.symbol);
@@ -253,6 +311,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   console.error(`[screen] Phase A: quote fetch for ${allSymbols.length} symbols...`);
   await runQuotePhase(allSymbols, checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase A done: ${Object.keys(checkpoint.quoteResults).length} fetched, ${checkpoint.quoteFailures.length} failed`);
+  mark("fetch_quote");
 
   const wanted = new Set(requestedProfiles(profileArg));
   const universeBySymbol = new Map(universe.map((u) => [u.symbol, u]));
@@ -271,6 +330,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   console.error(`[screen] Phase B: enrichment fetch for ${gatePassed.length} symbols...`);
   await runEnrichmentPhase(gatePassed.map((g) => g.symbol), checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase B done: ${Object.keys(checkpoint.enrichResults).length} enriched total, ${checkpoint.enrichFailures.length} failed total`);
+  mark("fetch_enrichment");
 
   // TASK_CARD_04: insider/institutional/short-interest evidence must be
   // ready BEFORE indicator/detector computation below, unlike CARD 03's
@@ -284,10 +344,12 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   await runInsidersIndexPhase(universeCikSet, tickerByCik, checkpoint, CHECKPOINT_PATH);
   const relevantFilingCount = Object.values(checkpoint.insiderDailyIndexCache).reduce((a, f) => a + f.length, 0);
   console.error(`[screen] Phase insiders-index done: ${Object.keys(checkpoint.insiderDailyIndexCache).length} days scanned, ${relevantFilingCount} relevant filings found`);
+  mark("fetch_insiders_index");
 
   console.error(`[screen] Phase insiders-filings: fetching + parsing ${relevantFilingCount} filings (this is the slow one)...`);
   await runInsidersFilingsPhase(checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase insiders-filings done: ${Object.keys(checkpoint.insiderFilingResults).length} parsed total, ${checkpoint.insiderFilingFailures.length} failed total`);
+  mark("fetch_insiders_filings");
 
   const insiderClusters = aggregateInsiderClusters(
     Object.values(checkpoint.insiderFilingResults),
@@ -299,6 +361,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   console.error(`[screen] Phase institutions: fresh institutional-ownership snapshot for ${gatePassedSymbols.length} symbols...`);
   await runInstitutionalTrendPhase(gatePassedSymbols, checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase institutions done`);
+  mark("fetch_institutions");
 
   console.error(`[screen] Phase short-interest: fetching latest FINRA file...`);
   const shortInterestFile = await fetchLatestShortInterestFile(card04Config.shortInterest.settlementDateWalkBackDays);
@@ -307,6 +370,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       ? `[screen] Phase short-interest done: settlementDate=${shortInterestFile.settlementDate} lagDays=${shortInterestFile.lagDays} records=${shortInterestFile.records.size}`
       : `[screen] Phase short-interest: no file found within the configured walk-back window`,
   );
+  mark("fetch_short_interest");
 
   console.error(`[screen] Phase indicators: computing technical indicators for ${gatePassed.length} symbols...`);
   const flagsBySymbol = new Map<string, IndicatorFlags>();
@@ -350,6 +414,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     }
   }
 
+  mark("detect_indicators");
   console.error(`[screen] Phase detectors: running ${allDetectors.length} detectors...`);
   const detectorSummary: Record<string, { triggeredCount: number }> = {};
   for (const d of allDetectors) detectorSummary[d.id] = { triggeredCount: 0 };
@@ -406,9 +471,11 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   // ai/decisions.md. Phase C mirrors Phase B's checkpoint/resume shape.
   const candidatePool = symbols.filter((s) => s.buckets.length > 0).map((s) => s.symbol);
   const candidatePoolSet = new Set(candidatePool);
+  mark("detect_detectors");
   console.error(`[screen] Phase fundamentals: ${candidatePool.length} candidate-pool symbols...`);
   await runFundamentalsPhase(candidatePool, checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase fundamentals done: ${Object.keys(checkpoint.fundamentalsResults).length} fetched total, ${checkpoint.fundamentalsFailures.length} failed total`);
+  mark("fetch_fundamentals");
 
   // TASK_CARD_03_PATCH Part A: over the full gate-passed universe (not
   // the candidate pool), reusing the buckets/flags already computed above.
@@ -424,9 +491,11 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const sectorFootprints = aggregateSectorFootprints(footprintInputs, Object.keys(SECTOR_TO_ETF), sectorFootprintConfig);
   const anomalyCount = sectorFootprints.filter((f) => f.footprintAnomaly).length;
   console.error(`[screen] Phase sector footprint done: ${anomalyCount} sector(s) flagged footprint_anomaly`);
+  mark("detect_sector_footprint");
 
   console.error(`[screen] Phase market context: sector rankings + regime snapshot...`);
   const { sectorRankings, marketRegime } = await fetchMarketContext();
+  mark("fetch_market_context");
   const sectorRankBySector = new Map(sectorRankings.map((r) => [r.sector, r]));
 
   const eventWindowNow = new Date();
@@ -460,6 +529,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const watchlistEntries: WatchlistEntry[] = selectWatchlist(selectableSymbols, candidateSymbolSet, combinedDetectorsConfig, card05Config);
   const promotedThisRun = selectedCandidates.filter((c) => c.promoted).map((c) => c.symbol);
   console.error(`[screen] Phase select done: ${selectedCandidates.length} candidates, ${watchlistEntries.length} watchlist, ${promotedThisRun.length} promoted`);
+  mark("detect_select");
 
   // TASK_CARD_05 SCOPE 1: FMP enrichment only for the narrowed candidate+watchlist pool (<= 15), never the full universe (Memo No.4 E17).
   const enrichPoolSymbols = [...new Set([...selectedCandidates.map((c) => c.symbol), ...watchlistEntries.map((w) => w.symbol)])];
@@ -471,6 +541,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     const fmp = await fetchFmpEnrichment(symbol, yahooPrice, process.env.FMP_API_KEY, card05Config);
     fmpBySymbol.set(symbol, fmp);
   }
+  mark("fetch_fmp");
 
   function pivotsFor(symbol: string) {
     const ohlcv = checkpoint.enrichResults[symbol]?.ohlcv ?? [];
@@ -559,6 +630,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   writeFileSync(dissentPayloadPath, dissentPayloadText, "utf-8");
   writeFileSync(htmlReportPath, htmlReportText, "utf-8");
   console.error(`[screen] Phase reporting done: ${atlasPayloadPath}, ${dissentPayloadPath}, ${htmlReportPath}`);
+  mark("report_generate");
 
   // TASK_CARD_05 SCOPE 6: ledger append (candidates + watchlist). Never
   // mutates any existing line - each call is a fresh append.
@@ -593,6 +665,54 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     });
   }
   console.error(`[screen] Phase ledger done: ${selectedCandidates.length + watchlistEntries.length} entries appended`);
+  mark("report_ledger");
+
+  // TASK_CARD_06 SCOPE 2: fold the mark() timestamps into per-segment
+  // durations, then roll those up into the 4 macro categories.
+  const detail: Record<string, number> = {};
+  for (let i = 1; i < marks.length; i++) {
+    detail[marks[i].label] = marks[i].t - marks[i - 1].t;
+  }
+  const timingBreakdown = {
+    universeMs: 0,
+    fetchMs: 0,
+    detectMs: 0,
+    reportMs: 0,
+    detail,
+  };
+  for (const [label, ms] of Object.entries(detail)) {
+    const category = PHASE_CATEGORY[label];
+    if (category === "universe") timingBreakdown.universeMs += ms;
+    else if (category === "fetch") timingBreakdown.fetchMs += ms;
+    else if (category === "detect") timingBreakdown.detectMs += ms;
+    else if (category === "report") timingBreakdown.reportMs += ms;
+  }
+  console.error(
+    `[screen] timing breakdown: 宇宙=${timingBreakdown.universeMs}ms 抓取=${timingBreakdown.fetchMs}ms 检测=${timingBreakdown.detectMs}ms 报告=${timingBreakdown.reportMs}ms total=${Date.now() - t0}ms`,
+  );
+
+  // TASK_CARD_06 SCOPE 2: failure-symbol attribution. Only the 3 fetch
+  // phases that key their failures by symbol (not accession path) are
+  // attributable here - see the ScreenRunResult.runMeta.failureAttribution
+  // doc comment above for why insider filing failures are excluded.
+  const failuresBySymbol = new Map<string, string[]>();
+  const noteFailure = (symbol: string, phase: string) => {
+    const existing = failuresBySymbol.get(symbol);
+    if (existing) existing.push(phase);
+    else failuresBySymbol.set(symbol, [phase]);
+  };
+  for (const s of checkpoint.quoteFailures) noteFailure(s, "quote");
+  for (const s of checkpoint.enrichFailures) noteFailure(s, "enrichment");
+  for (const s of checkpoint.fundamentalsFailures) noteFailure(s, "fundamentals");
+  const failureAttribution = {
+    bySymbol: Object.fromEntries(failuresBySymbol),
+    totalDistinctSymbolsFailed: failuresBySymbol.size,
+  };
+  console.error(
+    failuresBySymbol.size === 0
+      ? `[screen] failure attribution: 0 symbols failed at any fetch phase this run`
+      : `[screen] failure attribution: ${failuresBySymbol.size} distinct symbol(s) failed (quote=${checkpoint.quoteFailures.length}, enrichment=${checkpoint.enrichFailures.length}, fundamentals=${checkpoint.fundamentalsFailures.length}) - see runMeta.failureAttribution.bySymbol for the full per-symbol breakdown`,
+  );
 
   return {
     runMeta: {
@@ -624,6 +744,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       },
       sectorFootprints,
       elapsedMs: Date.now() - t0,
+      timingBreakdown,
+      failureAttribution,
     },
     symbols: enrichedSymbols,
     selection: {
