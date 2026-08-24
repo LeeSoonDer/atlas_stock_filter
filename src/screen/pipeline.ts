@@ -41,6 +41,22 @@ import type { FootprintConfig, SectorFootprint, SymbolFootprintInput } from "./s
 import sectorFootprintConfigJson from "../../config/sector.json" with { type: "json" };
 import { computeEventWindow } from "./event_window/computeEventWindow.js";
 import type { EventWindowConfig, EventWindowEntry } from "./event_window/types.js";
+import { selectCandidates, selectWatchlist } from "./select/index.js";
+import type { SelectableSymbol, SelectConfig, SelectedCandidate, WatchlistEntry } from "./select/types.js";
+import { mostRecentPivotHigh, mostRecentPivotLow } from "./indicators/pivotPoints.js";
+import { generateAtlasPayload, generateDissentPayload } from "../report/payload/index.js";
+import type { PayloadCandidateInput } from "../report/payload/types.js";
+import { renderReport } from "../report/html/index.js";
+import type { HtmlReportCandidateInput, ReportInput } from "../report/html/types.js";
+import { fetchFmpEnrichment } from "../data/enrich/index.js";
+import type { FmpConfig, FmpEnrichmentResult } from "../data/enrich/types.js";
+import {
+  appendLedgerEntry,
+  joinScreeningWithOutcome,
+  previousWatchlistSymbols as readPreviousWatchlistSymbols,
+} from "../ledger/index.js";
+import type { ScreeningLedgerEntry } from "../ledger/types.js";
+import card05ConfigJson from "../../config/card05.json" with { type: "json" };
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
@@ -53,6 +69,7 @@ const card04Config = card04ConfigJson as InsiderClusterConfig &
     detectorD: { minConditionsRequired: number };
   };
 const sectorFootprintConfig = sectorFootprintConfigJson as FootprintConfig;
+const card05Config = card05ConfigJson as SelectConfig & FmpConfig;
 /** Reshapes card04Config's threshold values into DetectorsConfig's shape at wire-up time - card04.json stays the single source of truth for its own numbers (see Detector D's own file comment). */
 const combinedDetectorsConfig: DetectorsConfig = {
   ...detectorsConfig,
@@ -202,6 +219,15 @@ export interface ScreenRunResult {
     elapsedMs: number;
   };
   symbols: ScreenOutputSymbol[];
+  /** TASK_CARD_05 SCOPE 2/3/4/5/6: the selector's output and the paths of the three generated report artifacts. */
+  selection: {
+    candidates: SelectedCandidate[];
+    watchlist: WatchlistEntry[];
+    promotedThisRun: string[];
+    atlasPayloadPath: string;
+    dissentPayloadPath: string;
+    htmlReportPath: string;
+  };
 }
 
 /**
@@ -414,9 +440,163 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     };
   });
 
+  // TASK_CARD_05 SCOPE 2: selector + watchlist. Read the PREVIOUS run's
+  // watchlist state from the ledger BEFORE this run appends anything -
+  // that's what makes the promotion state machine work across runs.
+  const runTimestamp = eventWindowNow.toISOString();
+  const previousWatchlist = readPreviousWatchlistSymbols();
+
+  const selectableSymbols: SelectableSymbol[] = enrichedSymbols.map((s) => ({
+    symbol: s.symbol,
+    profile: s.profile,
+    buckets: s.buckets,
+    bucketScores: s.bucketScores,
+    flags: s.flags,
+  }));
+
+  console.error(`[screen] Phase select: candidates + watchlist...`);
+  const selectedCandidates: SelectedCandidate[] = selectCandidates(selectableSymbols, previousWatchlist, card05Config);
+  const candidateSymbolSet = new Set(selectedCandidates.map((c) => c.symbol));
+  const watchlistEntries: WatchlistEntry[] = selectWatchlist(selectableSymbols, candidateSymbolSet, combinedDetectorsConfig, card05Config);
+  const promotedThisRun = selectedCandidates.filter((c) => c.promoted).map((c) => c.symbol);
+  console.error(`[screen] Phase select done: ${selectedCandidates.length} candidates, ${watchlistEntries.length} watchlist, ${promotedThisRun.length} promoted`);
+
+  // TASK_CARD_05 SCOPE 1: FMP enrichment only for the narrowed candidate+watchlist pool (<= 15), never the full universe (Memo No.4 E17).
+  const enrichPoolSymbols = [...new Set([...selectedCandidates.map((c) => c.symbol), ...watchlistEntries.map((w) => w.symbol)])];
+  console.error(`[screen] Phase FMP: ${enrichPoolSymbols.length} candidate+watchlist symbols${process.env.FMP_API_KEY ? "" : " (no FMP_API_KEY configured - all 不可得)"}...`);
+  const enrichedBySymbol = new Map(enrichedSymbols.map((s) => [s.symbol, s]));
+  const fmpBySymbol = new Map<string, FmpEnrichmentResult>();
+  for (const symbol of enrichPoolSymbols) {
+    const yahooPrice = enrichedBySymbol.get(symbol)?.regularMarketPrice;
+    const fmp = await fetchFmpEnrichment(symbol, yahooPrice, process.env.FMP_API_KEY, card05Config);
+    fmpBySymbol.set(symbol, fmp);
+  }
+
+  function pivotsFor(symbol: string) {
+    const ohlcv = checkpoint.enrichResults[symbol]?.ohlcv ?? [];
+    const clean = cleanBars(ohlcv);
+    return { high: mostRecentPivotHigh(clean, 2, 90), low: mostRecentPivotLow(clean, 2, 90) };
+  }
+  function closes90dFor(symbol: string): number[] {
+    const ohlcv = checkpoint.enrichResults[symbol]?.ohlcv ?? [];
+    return cleanBars(ohlcv)
+      .slice(-90)
+      .map((b) => b.close);
+  }
+
+  const payloadCandidates: PayloadCandidateInput[] = selectedCandidates.map((c) => {
+    const s = enrichedBySymbol.get(c.symbol)!;
+    const pivots = pivotsFor(c.symbol);
+    return {
+      symbol: c.symbol,
+      securityName: s.securityName,
+      profile: s.profile,
+      speculative: s.speculative,
+      primaryBucket: c.primaryBucket,
+      primaryBucketScore: c.primaryBucketScore,
+      allBucketsHit: c.allBucketsHit,
+      promoted: c.promoted,
+      flags: s.flags,
+      fundamentals: s.fundamentals,
+      eventWindow: s.eventWindow,
+      sectorRank: s.sectorRank,
+      pivotHigh: pivots.high,
+      pivotLow: pivots.low,
+    };
+  });
+
+  const htmlCandidates: HtmlReportCandidateInput[] = payloadCandidates.map((p) => ({
+    ...p,
+    closes90d: closes90dFor(p.symbol),
+    fmp: fmpBySymbol.get(p.symbol),
+  }));
+
+  console.error(`[screen] Phase reporting: generating PAYLOAD, DISSENT PAYLOAD, HTML report...`);
+  const atlasPayloadText = generateAtlasPayload({
+    runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length },
+    marketRegime,
+    sectorFootprints,
+    candidates: payloadCandidates,
+  });
+  const dissentPayloadText = generateDissentPayload(
+    selectedCandidates.map((c) => ({ symbol: c.symbol, primaryBucket: c.primaryBucket })),
+    runTimestamp,
+  );
+
+  const outcomeJoined = joinScreeningWithOutcome();
+  const nowForLedger = new Date();
+  const MAX_HOLDING_DAYS_FOR_BACKFILL_NUDGE = 180; // outer bound of all 3 legal holding periods (Layer 1 never assigns a specific one - see ai/decisions.md)
+  const pendingBackfill = outcomeJoined
+    .filter(({ outcome, screening }) => outcome === null && (nowForLedger.getTime() - new Date(screening.screeningTimestamp).getTime()) / 86400000 > MAX_HOLDING_DAYS_FOR_BACKFILL_NUDGE)
+    .map(({ screening }) => screening);
+  const invalidatedEntries = outcomeJoined
+    .filter(({ outcome }) => outcome?.outcome.invalidationTriggered === true)
+    .map(({ screening, outcome }) => ({ screening, invalidatedAt: outcome!.backfilledAt }));
+
+  const watchlistForHtml = watchlistEntries.map((w) => ({
+    symbol: w.symbol,
+    securityName: enrichedBySymbol.get(w.symbol)?.securityName ?? w.symbol,
+    reason: w.reason,
+  }));
+
+  const htmlReportText = renderReport({
+    runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length },
+    marketRegime,
+    sectorFootprints,
+    candidates: htmlCandidates,
+    watchlist: watchlistForHtml,
+    promotedThisRun,
+    ledgerPendingBackfill: pendingBackfill,
+    ledgerInvalidated: invalidatedEntries,
+  });
+
+  const tsSuffix = runTimestamp.replace(/[:.]/g, "-");
+  mkdirSync("output", { recursive: true });
+  const atlasPayloadPath = `output/atlas_payload_${tsSuffix}.txt`;
+  const dissentPayloadPath = `output/atlas_dissent_payload_${tsSuffix}.txt`;
+  const htmlReportPath = `output/atlas_report_${tsSuffix}.html`;
+  writeFileSync(atlasPayloadPath, atlasPayloadText, "utf-8");
+  writeFileSync(dissentPayloadPath, dissentPayloadText, "utf-8");
+  writeFileSync(htmlReportPath, htmlReportText, "utf-8");
+  console.error(`[screen] Phase reporting done: ${atlasPayloadPath}, ${dissentPayloadPath}, ${htmlReportPath}`);
+
+  // TASK_CARD_05 SCOPE 6: ledger append (candidates + watchlist). Never
+  // mutates any existing line - each call is a fresh append.
+  for (const c of selectedCandidates) {
+    const s = enrichedBySymbol.get(c.symbol)!;
+    appendLedgerEntry({
+      recordType: "screening",
+      symbol: c.symbol,
+      screeningTimestamp: runTimestamp,
+      profile: s.profile,
+      speculative: s.speculative,
+      status: c.promoted ? "promoted" : "candidate",
+      buckets: c.allBucketsHit,
+      flagsSnapshot: s.flags,
+      holdingPeriod: null,
+      opportunityType: c.primaryBucket,
+    });
+  }
+  for (const w of watchlistEntries) {
+    const s = enrichedBySymbol.get(w.symbol)!;
+    appendLedgerEntry({
+      recordType: "screening",
+      symbol: w.symbol,
+      screeningTimestamp: runTimestamp,
+      profile: s.profile,
+      speculative: s.speculative,
+      status: "watchlist",
+      buckets: s.buckets,
+      flagsSnapshot: s.flags,
+      holdingPeriod: null,
+      opportunityType: null,
+    });
+  }
+  console.error(`[screen] Phase ledger done: ${selectedCandidates.length + watchlistEntries.length} entries appended`);
+
   return {
     runMeta: {
-      timestamp: new Date().toISOString(),
+      timestamp: runTimestamp,
       profileArg,
       rawUniverseCount: rawCount,
       postExclusionCount: universe.length,
@@ -446,6 +626,14 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       elapsedMs: Date.now() - t0,
     },
     symbols: enrichedSymbols,
+    selection: {
+      candidates: selectedCandidates,
+      watchlist: watchlistEntries,
+      promotedThisRun,
+      atlasPayloadPath,
+      dissentPayloadPath,
+      htmlReportPath,
+    },
   };
 }
 

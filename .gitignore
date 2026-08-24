@@ -11,4 +11,14 @@ Thumbs.db
 
 # Atlas Layer 1 run artifacts (regenerable; not source)
 output/*.json
+output/atlas_payload_*.txt
+output/atlas_dissent_payload_*.txt
+output/atlas_report_*.html
 !output/.gitkeep
+
+# output/ledger.jsonl is deliberately NOT ignored: the forward outcome
+# ledger is constitutionally required to be permanently archived and
+# never deleted (Amendment No.2, 修正案五) - unlike the regenerable
+# artifacts above, it's the one output/ file that belongs in version
+# control (git's append-friendly, auditable history matches the
+# constitution's "全量归档,永不删除" requirement well).
