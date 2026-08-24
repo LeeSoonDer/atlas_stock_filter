@@ -4,72 +4,81 @@
 - Template initialized; governance, constitution, and cards merged into repo.
 - ai/project_overview.md initialized from Atlas idea + constitution cross-check.
 - constitution/ (5 files) read in full and treated as frozen law.
-- TASK_CARD_01 - Layer 1 skeleton (universe definer, data access, pipeline
-  shell, ledger placeholder). DONE, independently verified, pushed to
+- TASK_CARD_01 - Layer 1 skeleton. DONE, independently verified, pushed to
   origin/master.
-- TASK_CARD_02 - three pure-technical detector buckets (Momentum Breakout,
-  Volatility Compression Setup, Oversold Reversal) + indicator library.
-  DONE, independently verified, pushed to origin/master.
-- TASK_CARD_03 - fundamental flags (366-symbol "候选" pool) + sector
-  strength (full 3352-symbol universe) + market environment snapshot
-  (run-level). DONE. 4 commits on master, not yet pushed.
-  - src/screen/fundamentals: 4 flags (revenueGrowth/grossMargin/
-    profitability/leverage) + earningsSoon/earningsDate, each with its
-    own Availability tag. Uses yahoo-finance2's fundamentalsTimeSeries
-    (verified live that quoteSummary's incomeStatementHistory* modules
-    are broken - grossProfit hardcoded to 0 - the package's own runtime
-    warning confirms this). Revenue "同比" read as annual-period YoY, not
-    quarterly (quarterly history only spans ~5 sequential quarters,
-    not enough for a real same-quarter-last-year comparison).
-  - src/screen/sector: 11 SPDR sector ETFs (tickers verified live),
-    Yahoo's 11 sector strings (verified against real cached data)
-    mapped 1:1. Composite rank = average of 1mo-rank and 3mo-rank
-    positions, re-ranked. Top/bottom 3 = tailwind/headwind.
-  - src/screen/regime: SPY-vs-SMA200 + SMA200 slope + VIX-vs-its-own-
-    avg -> a 3-signal majority-vote label (顺风/中性/逆风), with an
-    elevated-VIX override. Descriptive only, does not gate screening.
-  - "候选" population for fundamentals = the 366 symbols that triggered
-    at least one CARD 02 detector bucket (no formal Top-5 selection
-    exists yet - see ai/decisions.md). Sector tagging applies to the
-    full 3352 (cheap, reuses cached sector names).
-  - 15 new unit tests (31 total project-wide), plus a real full live
-    run (both profiles, 0 fundamentals fetch failures, ~135s):
-    11/11 sectors ranked plausibly, regime label 顺风 with a
-    internally-consistent 2-of-3 bullish signal count, 5 sampled
-    candidates' fundamentals cross-checked as internally plausible,
-    all 14 earnings_soon=true symbols independently re-verified to
-    have 0.65-9.65 real days to their earnings date.
-  - DONE-WHEN's Yahoo-page spot-check was NOT literally done (no
-    browser access) - substituted with the same underlying API data
-    (same provider, different access method - a smaller gap than CARD
-    02's TradingView substitution). Earnings-calendar cross-check also
-    has no independent second source (no Finnhub API key configured) -
-    verified internal date arithmetic only. Both disclosed to the user.
-  - TASK_CARD_03_PATCH (sector footprint aggregation + event window) NOT
-    attempted: its own header states CARD 04 is a co-prerequisite
-    (needs CARD 04's institutional-bucket data, which doesn't exist yet).
+- TASK_CARD_02 - three technical detector buckets + indicator library. DONE,
+  independently verified. Local commits, not yet pushed.
+- TASK_CARD_03 - fundamental flags + sector strength + market regime. DONE,
+  independently verified. Local commits, not yet pushed.
+- TASK_CARD_04 - fourth detector bucket (Institutional Accumulation Proxy):
+  Form 4 insider clusters (SEC EDGAR), institutional-ownership trend,
+  short interest (FINRA), Detector D. DONE. 6 commits + this memory-update
+  commit, all local, not yet pushed.
+  - src/data/insiders: SEC EDGAR daily-index scan + Form 4 fetch/parse.
+    Requires an email-format User-Agent (SEC_EDGAR_USER_AGENT env var,
+    documented placeholder fallback) - verified live that a descriptive
+    string or URL alone gets 403. Rate-limited to 8 req/s (under SEC's
+    10 req/s cap) via a single serialized inter-request delay.
+  - src/data/short: FINRA short interest via a free CSV file (NOT the
+    'consolidated' API, which requires a token/is not free) - see
+    ai/decisions.md. Settlement date discovered by walking backward day
+    by day (FINRA's exact schedule isn't programmatically discoverable).
+  - src/screen/institutions: institutional-ownership trend, persisted
+    cross-run in checkpoint.institutionalHistory. Universally 不可得 on
+    this repo's first-ever run (no prior snapshot exists yet) - expected,
+    disclosed, not a bug.
+  - src/screen/detectors/institutionalAccumulation.ts: Detector D, needs
+    >=2 of {insiderCluster, institutionalTrend==='up', short-interest
+    decline-or-squeeze, OBV slope positive}.
+  - FULL LIVE VALIDATION (90-day lookback, both profiles, cold start):
+    31,963 relevant Form-4 filings found, 31,954 parsed (9 were
+    duplicate accession paths across scanned days - benign, explained,
+    not data loss), 0 failures, 0 rate-limit bans. Took 161 minutes
+    end-to-end (includes a one-time floatShares cache-migration
+    backfill for all 3352 symbols from earlier cards). detectorSummary:
+    momentum_breakout=27, volatility_compression_setup=316,
+    oversold_reversal=25, institutional_accumulation_proxy=512 - all 4
+    buckets (the full v1 detector set) non-zero. 200 real insider
+    clusters found project-wide (171 within the gate-passed universe).
+  - Independently re-verified 3 real insider-cluster filings (GWRS/Cohn
+    Andrew M., ABCL/Montalbano John S., ACDC's 3-owner Wilks filing) by
+    re-fetching directly from SEC, bypassing the pipeline entirely -
+    exact match on owner name(s) and transaction code/shares/price each
+    time. Substitutes for DONE-WHEN's "对EDGAR网页人工核对" (no browser
+    access in this environment), disclosed as such.
+  - Subsequent runs are cheap: insiderFilingResults/insiderDailyIndexCache
+    accumulate forever (SEC data is immutable once published) - only new
+    days/filings get fetched going forward.
 
 ## In Progress
-- Nothing active. Awaiting user direction on TASK_CARD_04 (explicitly not
+- Nothing active. Awaiting user direction on TASK_CARD_05 (explicitly not
   started per the established stop-after-each-card convention).
 
 ## Next Priorities
-1. User to review TASK_CARD_03 results (including the two disclosed
-   verification substitutions) and decide whether to proceed to CARD_04.
-2. git push CARD_02's and CARD_03's commits once the user confirms (CARD
-   01 is pushed; CARD 02 and CARD 03's commits are local-only as of this
-   writing).
-3. TASK_CARD_03_PATCH remains blocked until CARD_04 (institutional bucket)
-   exists.
+1. User to review TASK_CARD_04 results and decide whether to proceed to
+   TASK_CARD_05.
+2. git push CARD_02/03/04's commits once the user confirms (only CARD 01
+   is on origin/master as of this writing).
+3. TASK_CARD_03_PATCH now unblocked (CARD_04's institutional-bucket data
+   exists) - could be attempted whenever the user wants it, since its
+   only stated prerequisite (CARD 03 + CARD 04 both DONE) is now met.
 4. Undecided: full per-symbol OHLCV bars still live only in
-   output/checkpoint.json (grows with every enrichment run, gitignored) -
-   a future card should decide their permanent storage/access pattern.
+   output/checkpoint.json (now includes insider/institutional data too,
+   244MB+ and growing), gitignored - a future card should decide their
+   permanent storage/access pattern.
 
 ## Blockers
-- TASK_CARD_03_PATCH blocked on TASK_CARD_04 (its own stated prerequisite).
+- None. (TASK_CARD_03_PATCH's blocker is resolved as of this card.)
 
 ## Temporary Notes
-- output/checkpoint.json is large and gitignored; it is a reusable local
-  cache (Phase A quote + Phase B enrichment/OHLCV + Phase C fundamentals),
-  not a deliverable. Deleting it is safe but forces a full network refetch.
+- output/checkpoint.json is large (244MB+) and gitignored - a reusable
+  local cache across ALL cards' data (quotes/enrichment/fundamentals/
+  insider filings/institutional history), not a deliverable. Deleting it
+  is safe but forces a full network refetch, INCLUDING the ~2.5-3 hour
+  EDGAR Form-4 backfill - warn the user before ever suggesting this.
+- Lesson learned this card: piping a long-running background command
+  through `| tail -N` hides ALL output until the process exits (tail
+  buffers to EOF, it does not stream) - looks identical to "stuck."
+  Don't do that for progress-observable background runs; let output go
+  directly to the captured file and Read it incrementally instead.
 - Keep this file current after meaningful work.

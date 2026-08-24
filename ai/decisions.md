@@ -145,3 +145,33 @@ Reason: verified live that yahoo's quarterly fundamentalsTimeSeries only returns
 Tradeoff: revenue growth trend updates once a year (per fiscal year-end) rather than quarterly: less responsive than a true quarterly-YoY metric would be, but that metric isn't computable from this free data source.
 
 Future implications: if a future data source provides deeper quarterly history (5+ quarters back), reconsider a true quarterly-YoY version.
+
+## 2026-08-24 - TASK_CARD_04: FINRA's authenticated dataset skipped; free CSV file used instead
+
+Decision: short interest comes from `cdn.finra.org/equity/otcmarket/biweekly/shrt{date}.csv`, not FINRA's `group/equity/name/consolidated_short_interest` API.
+
+Reason: verified live - the "consolidated" API dataset returns 401 without a token (not free); its similarly-named free sibling (`group/otcMarket/name/EquityShortInterest`) is genuinely OTC-only (AAPL returns 204). The CSV file, despite its "otcmarket" URL path, is confirmed to include real NYSE/NASDAQ names.
+
+Tradeoff: none identified - the CSV file has everything SCOPE 3 needs.
+
+Future implications: if FINRA ever locks down this CSV path too, the authenticated API is the fallback, but would need a registered API key (no longer "zero付费依赖" in spirit, even if the key itself is free to obtain).
+
+## 2026-08-24 - TASK_CARD_04: institutional ownership trend will be 不可得 on every symbol until this repo's second-ever run
+
+Decision: accepted as correct, disclosed to the user before running, not silently shipped.
+
+Reason: Yahoo has no API for a clean multi-period aggregate institutional-% trend, so computeInstitutionalTrend compares this run's fresh snapshot against a prior run's persisted snapshot (checkpoint.institutionalHistory) - see the file's own comment. A first-ever run has no prior snapshot to compare against.
+
+Tradeoff: Detector D's institutional-trend condition is effectively unavailable until enough calendar time has passed between two runs (config-driven minDaysBetweenSnapshots, default 60 days) - live-verified the other 3 conditions (insiderCluster, short interest, OBV slope) are sufficient on their own to produce real Detector D hits (512 on the full 90-day run) even with this condition universally unavailable.
+
+Future implications: revisit once this repo has been run repeatedly across a >60-day span in production use.
+
+## 2026-08-24 - TASK_CARD_04: full 90-day EDGAR Form 4 backfill is a ~2.5-3 hour one-time cost
+
+Decision: accepted as the real, disclosed cost of the first-ever run; not narrowed down per the card's own circuit-breaker fallback ("卡死优先降范围,如只解析最近30日"), since the full run completed successfully (0 failures, no 403/429 bans) rather than getting stuck.
+
+Reason: cross-referencing SEC's daily Form-4 index against our 3352-symbol universe empirically found ~36% overlap (~430 relevant filings/day), meaning a 90-day window means ~32,000 individual filing fetches. At a safety-margined 8 req/s (SEC's cap is 10 req/s), that floor alone is ~67 minutes; the real run measured 161 minutes end to end (including Phase B's one-time floatShares cache migration for all 3352 symbols).
+
+Tradeoff: every subsequent `npm run screen` run is cheap (only scans new days and fetches filings not already in the permanent insiderFilingResults/insiderDailyIndexCache - both accumulate forever, never re-fetched) - this cost is paid exactly once per environment, not per run.
+
+Future implications: if the checkpoint is ever deleted/reset, this ~2.5-3 hour cost recurs. Worth calling out to the user before any future checkpoint-clearing operation.
