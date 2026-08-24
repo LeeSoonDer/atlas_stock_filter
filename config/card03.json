@@ -21,5 +21,8 @@
     "spyCalendarDays": 400,
     "vixCalendarDays": 90,
     "sectorEtfCalendarDays": 120
+  },
+  "eventWindow": {
+    "windowDays": 180
   }
 }
