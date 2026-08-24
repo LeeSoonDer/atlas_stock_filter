@@ -205,3 +205,83 @@ Reason: verified live (grepped yahoo-finance2's complete type definitions) that 
 Tradeoff: event_window is currently earnings-only in practice, even though its type system supports all 4 event types.
 
 Future implications: if a Finnhub key is ever configured, shareholder_meeting/product_launch could be added without a type/schema change - only a new data-fetch + merge step.
+
+## 2026-08-24 - TASK_CARD_05: near-miss detection reimplements each detector's exact conditions with one numeric condition given a 10% grace band
+
+Decision: src/screen/select/nearMiss.ts's 4 functions mirror momentum_breakout/volatility_compression_setup/oversold_reversal/institutional_accumulation_proxy's real trigger logic exactly, except exactly one threshold-comparison per detector is relaxed by 10% (documented inline per function) so a symbol that's "close" to triggering can be identified for the watchlist.
+
+Reason: the card requires a watchlist populated partly by "接近触发" (near-trigger) symbols, but no card defines what "near" means numerically. Re-deriving each detector's full boolean condition tree from src/screen/detectors/ (rather than inventing a separate scoring heuristic) keeps near-miss logic provably consistent with the real detectors; picking one representative numeric condition per detector (not all of them) to relax was the simplest rule that avoids ambiguity about which combination of conditions should count as "close."
+
+Tradeoff: which single condition was chosen to relax is a judgment call per detector (documented in the function itself) - a symbol that's very close on a different condition than the one relaxed won't be flagged as near-miss.
+
+Future implications: if the project owner wants a different definition of "near," this is a self-contained, easily revised file.
+
+## 2026-08-24 - TASK_CARD_05: watchlist promotion drops non-compression-eligible candidates that lose their seat to a promotion, by design
+
+Decision: no code changes were made to prevent this; observed and accepted as correct.
+
+Reason: selectCandidates fills seats in two passes - promotion priority (previous watchlist symbols, by score) first, then round-robin for remaining seats. When enough prior-watchlist symbols are promoted to fill all seats, a symbol that was a non-compression candidate last run (and is therefore not compression-bucket watchlist-eligible, and is already-triggered so not near-miss-eligible either) has no path back onto this run's watchlist and disappears from selection entirely. Live-verified across two consecutive runs on real data: MRVI/TENX/ABCL/RCMT (run-1 non-compression candidates) vanished from run-2 selection exactly this way.
+
+Tradeoff: a symbol can go from "candidate" to entirely unselected in one run with no watchlist bridge, which may look surprising in the ledger's history for that symbol.
+
+Future implications: if the project owner wants a "promoted-but-bumped" candidate to land back on the watchlist instead of vanishing, selectWatchlist's eligibility rules would need a new bucket_agnostic fallback path - not attempted here since it's not what the card specifies.
+
+## 2026-08-24 - TASK_CARD_05: FMP enrichment degrades to universal 不可得 when FMP_API_KEY is unset, rather than blocking the run
+
+Decision: src/data/enrich/fetchFmpData.ts checks for the env var up front and, if absent, returns a fully-不可得 FmpEnrichment for every symbol without attempting any network call.
+
+Reason: FMP requires a paid/free-tier-signup API key that isn't configured in this environment; the constitution's own zero-fabrication rule requires 不可得 tagging (not a fabricated or skipped field) when data genuinely can't be obtained, and the card doesn't make FMP enrichment a hard blocking dependency for the rest of the pipeline (candidates/watchlist/detectors don't depend on it). Verified live: a full run with no key set completed normally, reporting "no FMP_API_KEY configured - all 不可得" for all 5 candidates.
+
+Tradeoff: PEG/P-E/P-B dual-source cross-check (SCOPE 1's stated purpose) is inert in this environment until a key is supplied.
+
+Future implications: set FMP_API_KEY in .env (see .env.example) to activate; no code change needed.
+
+## 2026-08-24 - TASK_CARD_05: FMP field names (priceToEarningsRatioTTM etc.) verified via WebSearch, not a live API call
+
+Decision: computeFmpEnrichment.ts reads `priceToEarningsRatioTTM`, `priceToBookRatioTTM`, `priceToEarningsGrowthRatioTTM` from FMP's `/stable/ratios-ttm` response shape; P/S and EV/EBITDA fields were deliberately left out of SCOPE 1's cross-check.
+
+Reason: no FMP_API_KEY was available in this environment to empirically verify field names against a live response (the project's usual anti-hallucination method for external APIs), so field names were instead cross-checked against FMP's own current API documentation and community-reported response samples via WebSearch. P/S and EV/EBITDA field names could not be confirmed with the same confidence from available sources, so they were excluded rather than guessed.
+
+Tradeoff: unlike every other external API integration in this project (Yahoo, SEC EDGAR, FINRA - all live-verified), this one is documentation-verified only; there is real residual risk FMP has since renamed or restructured this response shape.
+
+Future implications: once a real FMP_API_KEY is available, the very first live run's response should be spot-checked against these assumed field names before trusting any FMP-derived value in a real decision.
+
+## 2026-08-24 - TASK_CARD_05: ledger schema split into immutable ScreeningLedgerEntry vs separate append-only OutcomeUpdateLedgerEntry
+
+Decision: src/ledger/types.ts defines two record types in the same output/ledger.jsonl file (discriminated by `recordType`); an outcome/backfill is never written by mutating or replacing the original screening record, only by appending a new OutcomeUpdateLedgerEntry that references it by `(symbol, screeningTimestamp)`.
+
+Reason: the constitution requires the forward outcome ledger be append-only with no mutation or deletion ever (Amendment No.2, 修正案五). A single mutable record (screening fields + outcome fields on one object, outcome filled in later) would require rewriting an existing line in the file, which is exactly the operation the constitution forbids; two record types in one append-only stream satisfies the same relational need without ever touching a previously-written line.
+
+Tradeoff: reading "the current state of a screened symbol" requires joining screening records with their (possibly absent, possibly multiple over time) outcome records at read time (see computeLedgerStats/joinScreeningWithOutcome), rather than a single-record lookup.
+
+Future implications: any future code that reads the ledger must go through the join helpers, never assume one line = one complete record.
+
+## 2026-08-24 - TASK_CARD_05: output/ledger.jsonl is tracked in git, unlike every other output/ artifact
+
+Decision: .gitignore's `output/*.json` blanket rule is left in place for regenerable run artifacts, but output/ledger.jsonl is explicitly NOT ignored and is committed with its real accumulated entries.
+
+Reason: every other file in output/ (checkpoint.json, screen_run_*.json, atlas_payload/dissent/report artifacts) is fully regenerable by re-running the pipeline against live data. The forward outcome ledger is different in kind - it is the project's permanent historical record of what was screened and what happened afterward, and the constitution requires it be archived and never deleted (Amendment No.2, 修正案五). Git's append-friendly, auditable commit history is a reasonable fit for an append-only file that must never be rewritten.
+
+Tradeoff: the repo's git history will grow indefinitely as the ledger grows; large binary-diff-unfriendly growth isn't a concern since it's line-appended JSONL, but repo size should be revisited if the ledger grows very large over years of use.
+
+Future implications: never `git rm`, force-push over, or rewrite history touching this file; any future tooling that also writes to it must also only append.
+
+## 2026-08-24 - TASK_CARD_05: DISSENT payload isolation enforced at the TypeScript type level, not just by convention
+
+Decision: src/report/payload/generateDissentPayload.ts's input type, DissentInputCandidate, is structurally limited to `{ symbol, primaryBucket }` - it cannot compile against a richer candidate object containing flags/evidence/scores, even by accident.
+
+Reason: the constitution's "隔离铁律" (isolation iron rule) requires the red-team DISSENT payload contain zero flag values, evidence, or supporting reasoning - only the bare symbol/bucket/thesis-skeleton needed to write an independent dissenting case. A runtime filter (build the full payload, then strip fields) would be one refactor away from a leak; a type that structurally cannot hold the excluded fields makes that class of leak a compile error instead of a runtime risk. Verified live by grepping both real run's generated DISSENT payload files for any of the excluded field names/values - zero matches both times.
+
+Tradeoff: none identified - this is strictly safer than the alternative with no added complexity.
+
+Future implications: if a future card wants to add any new field to the DISSENT payload, it must be added deliberately to DissentInputCandidate's type, not passed through from the full candidate object.
+
+## 2026-08-24 - TASK_CARD_05: two DONE-WHEN items substituted/disclosed rather than personally verified
+
+Decision: "PAYLOAD 实贴 Atlas Radar 可产出合规辩护状(人工验证一次)" and "HTML 报告浏览器打开,渲染正常,sparkline 可见" were not claimed as directly verified by me.
+
+Reason: no access to Atlas Radar (an external tool the user operates) or a browser rendering environment exists in this environment. Consistent with this project's established pattern (see TASK_CARD_02's TradingView substitution above), the honest move is a structural/textual substitute - inspecting the generated payload text and HTML source directly (grep-verified content, structure, escaping, absence of gradient/purple styling) - reported to the user as a substitution, not silently treated as equivalent to the card's literal instruction.
+
+Tradeoff: does not catch anything only a human's eyes or Atlas Radar's own ingestion logic would catch (e.g., a rendering glitch, an Atlas Radar parsing quirk).
+
+Future implications: the user should open the generated atlas_report_*.html in a real browser and paste the atlas_payload_*.txt into Atlas Radar at least once to close this verification gap.

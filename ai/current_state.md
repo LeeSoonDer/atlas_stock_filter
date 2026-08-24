@@ -38,31 +38,90 @@
     against independently recomputed daysUntil arithmetic - exact match.
     Grepped full output for directional/predictive Chinese phrases -
     zero matches.
-  - DONE-WHEN item 5 ("板块异动与事件旗标均进入HTML报告...与PAYLOAD") NOT
-    satisfied: neither the HTML report nor the PAYLOAD generator exist
-    yet - both are explicitly CARD 05's scope. Disclosed before starting
-    work, not discovered after. sectorFootprints/eventWindow are already
-    in the pipeline output for CARD 05 to consume directly once it exists.
+  - DONE-WHEN item 5 ("板块异动与事件旗标均进入HTML报告...与PAYLOAD") is now
+    satisfied by TASK_CARD_05's HTML report + PAYLOAD generator (below) -
+    both consume sectorFootprints/eventWindow directly from pipeline output.
+- TASK_CARD_05 - selector + watchlist + dual payload generation + HTML
+  report + ledger wiring ("Layer 1 全功能可用"). DONE, 7 commits, all
+  local, not yet pushed. Independent verification dispatched, not yet
+  returned as of this write.
+  - src/screen/indicators/pivotPoints.ts: K=2 (5-bar fractal) pivot
+    high/low, needed for PAYLOAD's key-level section.
+  - src/screen/select/: selectCandidates (promotion-priority pass over
+    previous run's watchlist, then round-robin A->B->C->D across the 4
+    buckets), selectWatchlist (compression_unselected priority, then
+    near-miss fill via nearMiss.ts's 10%-grace-band reimplementation of
+    each detector's real conditions - see ai/decisions.md).
+  - src/ledger/: rewritten schema - ScreeningLedgerEntry (immutable) +
+    separate append-only OutcomeUpdateLedgerEntry, joined at read time.
+    Never mutates/deletes a written line (constitution Amendment No.2).
+    cli-backfill.ts (interactive + flag-driven), cli-stats.ts, new
+    package.json scripts `ledger:backfill` / `ledger:stats`.
+  - src/report/payload/: generateAtlasPayload (full evidence-bearing
+    Radar handoff text) + generateDissentPayload (red-team payload,
+    isolation enforced at the TYPE level - DissentInputCandidate can only
+    hold symbol+primaryBucket, not flags/evidence/scores).
+  - src/data/enrich/: FMP dual-source P/E, P/B, PEG + price-mismatch
+    check. Degrades to universal 不可得 when FMP_API_KEY unset (verified
+    live - no key configured in this environment). Field names verified
+    via WebSearch, not a live call (no key available) - flagged as a
+    residual-risk exception to this project's usual live-verification
+    pattern.
+  - src/report/html/: self-contained single-file HTML report (inline
+    SVG sparklines, flat GitHub-primer-like palette, dark/light via
+    prefers-color-scheme, zero external resources, zero gradients).
+  - src/screen/pipeline.ts wired end-to-end: reads previous watchlist
+    from ledger before writing, runs selection, FMP-enriches the <=15
+    candidate+watchlist pool, generates+writes all 3 artifact files,
+    appends ledger entries for every candidate/watchlist symbol,
+    surfaces ledger's passive pending-backfill/invalidated lists into
+    the HTML report.
+  - Live-validated twice, back-to-back, on real production data
+    (npm run screen -- --profile both, ~33s each): run 1 produced 5
+    candidates + 10 watchlist entries, all 3 artifacts generated and
+    structurally verified (DISSENT payload grep-checked for zero
+    flag/evidence leakage), 15 ledger entries. Run 2 (same cached data)
+    exercised the promotion state machine - confirmed exactly the top-5
+    highest-scoring run-1 watchlist symbols were promoted, sorted
+    descending by score; ledger grew to 30 entries; ledger:stats
+    reported correct real counts; observed (expected, not a bug) that
+    run-1's non-compression, non-near-miss-eligible candidates that lost
+    their seat to a promotion dropped out of selection entirely (see
+    ai/decisions.md).
+  - Two DONE-WHEN items substituted/disclosed, not personally verified:
+    PAYLOAD -> Atlas Radar ingestion (no access to that external tool)
+    and HTML report's browser rendering (no browser environment here) -
+    see ai/decisions.md for the substitution method used instead.
+  - .gitignore extended for new *.txt/*.html artifact types; output/
+    ledger.jsonl deliberately left OUT of .gitignore and committed with
+    its real 30 accumulated entries (constitutionally required permanent
+    record, unlike every other regenerable output/ file).
 
 ## In Progress
-- Nothing active. Awaiting user direction (independent verification of
-  this patch not yet dispatched as of this write - about to be).
+- Independent verification of TASK_CARD_05 dispatched in the background;
+  awaiting its report.
 
 ## Next Priorities
-1. Dispatch independent verification of TASK_CARD_03_PATCH.
-2. User to review results and decide next step: TASK_CARD_05 (which would
-   also complete DONE-WHEN item 5's HTML/PAYLOAD integration), or
-   something else.
-3. git push CARD_02/03/04/03_PATCH's commits once the user confirms (only
-   CARD 01 is on origin/master as of this writing).
-4. Undecided: full per-symbol OHLCV bars still live only in
+1. Review TASK_CARD_05's independent verification report once it returns.
+2. User to decide next step: TASK_CARD_06 (if one exists) or something
+   else. Do not proceed further without an explicit new instruction.
+3. git push CARD_02/03/04/03_PATCH/05's commits once the user confirms
+   (only CARD 01 is on origin/master as of this writing).
+4. User should open the generated atlas_report_*.html in a real browser
+   and paste an atlas_payload_*.txt into Atlas Radar at least once, to
+   close the two verification gaps noted above.
+5. Undecided: full per-symbol OHLCV bars still live only in
    output/checkpoint.json (now includes insider/institutional data too,
    very large), gitignored - a future card should decide their permanent
    storage/access pattern.
+6. If the user ever wants FMP's PEG/P-E/P-B cross-check live, set
+   FMP_API_KEY in .env (see .env.example) - no code change needed, but
+   the first live run's response shape should be spot-checked against
+   the WebSearch-verified (not live-verified) field names in
+   src/data/enrich/computeFmpEnrichment.ts.
 
 ## Blockers
-- None (TASK_CARD_03_PATCH's DONE-WHEN item 5 is a disclosed deferral,
-  not a blocker on the rest of this patch's work).
+- None.
 
 ## Temporary Notes
 - output/checkpoint.json is large and gitignored - a reusable local
