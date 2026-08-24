@@ -106,7 +106,7 @@ export async function fetchEnrichment(symbol: string): Promise<EnrichSlice> {
   const lookbackMs = fetchConfig.chartLookbackCalendarDays * 24 * 60 * 60 * 1000;
 
   const [profileResult, chartResult] = await Promise.allSettled([
-    yahooFinance.quoteSummary(symbol, { modules: ["assetProfile", "majorHoldersBreakdown"] }),
+    yahooFinance.quoteSummary(symbol, { modules: ["assetProfile", "majorHoldersBreakdown", "defaultKeyStatistics"] }),
     yahooFinance.chart(symbol, {
       period1: new Date(Date.now() - lookbackMs),
       period2: new Date(),
@@ -120,11 +120,12 @@ export async function fetchEnrichment(symbol: string): Promise<EnrichSlice> {
     fetchedAt,
     profileAvailability: "不可得",
     institutionsPercentHeldAvailability: "不可得",
+    floatSharesAvailability: "不可得",
     ohlcvAvailability: "不可得",
   };
 
   if (profileResult.status === "fulfilled") {
-    const { assetProfile, majorHoldersBreakdown } = profileResult.value;
+    const { assetProfile, majorHoldersBreakdown, defaultKeyStatistics } = profileResult.value;
     if (assetProfile?.sector || assetProfile?.industry) {
       slice.sector = assetProfile.sector;
       slice.industry = assetProfile.industry;
@@ -133,6 +134,10 @@ export async function fetchEnrichment(symbol: string): Promise<EnrichSlice> {
     if (majorHoldersBreakdown?.institutionsPercentHeld !== undefined) {
       slice.institutionsPercentHeld = majorHoldersBreakdown.institutionsPercentHeld;
       slice.institutionsPercentHeldAvailability = "可得";
+    }
+    if (defaultKeyStatistics?.floatShares !== undefined) {
+      slice.floatShares = defaultKeyStatistics.floatShares;
+      slice.floatSharesAvailability = "可得";
     }
   }
 

@@ -31,6 +31,9 @@ export interface EnrichSlice {
   profileAvailability: Availability;
   institutionsPercentHeld?: number;
   institutionsPercentHeldAvailability: Availability;
+  /** TASK_CARD_04: needed for the short-squeeze condition (SI >= 15% of float). */
+  floatShares?: number;
+  floatSharesAvailability: Availability;
   ohlcv?: OHLCVBar[];
   ohlcvTradingDays?: number;
   ohlcvAvailability: Availability;

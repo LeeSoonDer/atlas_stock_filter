@@ -2,8 +2,7 @@
   "insiders": {
     "lookbackDays": 90,
     "clusterMinDistinctBuyers": 2,
-    "requestDelayMs": 150,
-    "maxRequestsPerSecond": 6
+    "maxRequestsPerSecond": 8
   },
   "institutionalTrend": {
     "minDaysBetweenSnapshots": 60,

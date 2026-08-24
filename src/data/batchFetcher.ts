@@ -71,13 +71,23 @@ export async function runQuotePhase(
  * Phase B: fetches enrichment data (sector/industry, institutional %,
  * OHLCV) for symbols that already survived the profile gate. Concurrency-
  * limited, checkpointed per symbol, resumable.
+ *
+ * One-time migration: TASK_CARD_04 added floatShares to EnrichSlice.
+ * An entry cached before that field existed has
+ * floatSharesAvailability === undefined (not "不可得" - the field is
+ * simply absent from the old JSON), so such entries are treated as
+ * NOT done here and get refetched once to backfill it, then cache
+ * normally again afterward.
  */
 export async function runEnrichmentPhase(
   symbols: string[],
   checkpoint: CheckpointState,
   checkpointPath: string,
 ): Promise<void> {
-  const done = new Set([...Object.keys(checkpoint.enrichResults), ...checkpoint.enrichFailures]);
+  const doneResults = Object.entries(checkpoint.enrichResults)
+    .filter(([, v]) => v.floatSharesAvailability !== undefined)
+    .map(([symbol]) => symbol);
+  const done = new Set([...doneResults, ...checkpoint.enrichFailures]);
   const remaining = symbols.filter((s) => !done.has(s));
   const batches = chunk(remaining, fetchConfig.enrichConcurrency);
 
