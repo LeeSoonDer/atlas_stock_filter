@@ -1,5 +1,11 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { EnrichSlice, FundamentalsSlice, QuoteSlice } from "./types.js";
+import type { RelevantForm4Filing, ParsedForm4Filing } from "./insiders/types.js";
+
+export interface InstitutionalSnapshot {
+  asOf: string;
+  institutionsPercentHeld: number;
+}
 
 export interface CheckpointState {
   /**
@@ -20,6 +26,17 @@ export interface CheckpointState {
   /** Phase C (TASK_CARD_03): keyed by symbol like enrichResults, but only ever populated for the "候选" pool, not the full universe. */
   fundamentalsResults: Record<string, FundamentalsSlice>;
   fundamentalsFailures: string[];
+  /**
+   * TASK_CARD_04. Accumulates forever, never overwritten: SEC daily
+   * indexes and individual Form 4 filings are immutable once published,
+   * so once fetched they're cached permanently (unlike enrichResults'
+   * per-symbol-once caching, this is per-day / per-filing).
+   */
+  insiderDailyIndexCache: Record<string, RelevantForm4Filing[]>;
+  insiderFilingResults: Record<string, ParsedForm4Filing>;
+  insiderFilingFailures: string[];
+  /** TASK_CARD_04: one growing snapshot history per symbol, appended (deduped by day) every run - not cache-once, since a real trend needs genuinely fresh data. */
+  institutionalHistory: Record<string, InstitutionalSnapshot[]>;
 }
 
 export function freshCheckpoint(profile: string): CheckpointState {
@@ -34,18 +51,25 @@ export function freshCheckpoint(profile: string): CheckpointState {
     enrichFailures: [],
     fundamentalsResults: {},
     fundamentalsFailures: [],
+    insiderDailyIndexCache: {},
+    insiderFilingResults: {},
+    insiderFilingFailures: [],
+    institutionalHistory: {},
   };
 }
 
 /**
- * Migrates a checkpoint written before TASK_CARD_03 (missing
- * fundamentalsResults/fundamentalsFailures) so callers can rely on those
- * fields always existing, without discarding the still-valid Phase A/B
- * data already on disk.
+ * Migrates a checkpoint written before TASK_CARD_03/04 (missing later
+ * fields) so callers can rely on those fields always existing, without
+ * discarding the still-valid Phase A/B data already on disk.
  */
 function migrate(state: CheckpointState): CheckpointState {
   state.fundamentalsResults ??= {};
   state.fundamentalsFailures ??= [];
+  state.insiderDailyIndexCache ??= {};
+  state.insiderFilingResults ??= {};
+  state.insiderFilingFailures ??= [];
+  state.institutionalHistory ??= {};
   return state;
 }
 
