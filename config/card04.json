@@ -1,0 +1,20 @@
+{
+  "insiders": {
+    "lookbackDays": 90,
+    "clusterMinDistinctBuyers": 2,
+    "requestDelayMs": 150,
+    "maxRequestsPerSecond": 6
+  },
+  "institutionalTrend": {
+    "minDaysBetweenSnapshots": 60,
+    "flatBandPercent": 1
+  },
+  "shortInterest": {
+    "significantDeclinePercent": 15,
+    "squeezeMinFloatPercent": 15,
+    "settlementDateWalkBackDays": 60
+  },
+  "detectorD": {
+    "minConditionsRequired": 2
+  }
+}
