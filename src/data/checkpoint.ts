@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import type { EnrichSlice, QuoteSlice } from "./types.js";
+import type { EnrichSlice, FundamentalsSlice, QuoteSlice } from "./types.js";
 
 export interface CheckpointState {
   /**
@@ -17,6 +17,9 @@ export interface CheckpointState {
   quoteFailures: string[];
   enrichResults: Record<string, EnrichSlice>;
   enrichFailures: string[];
+  /** Phase C (TASK_CARD_03): keyed by symbol like enrichResults, but only ever populated for the "候选" pool, not the full universe. */
+  fundamentalsResults: Record<string, FundamentalsSlice>;
+  fundamentalsFailures: string[];
 }
 
 export function freshCheckpoint(profile: string): CheckpointState {
@@ -29,7 +32,21 @@ export function freshCheckpoint(profile: string): CheckpointState {
     quoteFailures: [],
     enrichResults: {},
     enrichFailures: [],
+    fundamentalsResults: {},
+    fundamentalsFailures: [],
   };
+}
+
+/**
+ * Migrates a checkpoint written before TASK_CARD_03 (missing
+ * fundamentalsResults/fundamentalsFailures) so callers can rely on those
+ * fields always existing, without discarding the still-valid Phase A/B
+ * data already on disk.
+ */
+function migrate(state: CheckpointState): CheckpointState {
+  state.fundamentalsResults ??= {};
+  state.fundamentalsFailures ??= [];
+  return state;
 }
 
 export function loadCheckpoint(path: string, profile: string): CheckpointState {
@@ -37,7 +54,7 @@ export function loadCheckpoint(path: string, profile: string): CheckpointState {
     return freshCheckpoint(profile);
   }
   const raw = readFileSync(path, "utf-8");
-  return JSON.parse(raw) as CheckpointState;
+  return migrate(JSON.parse(raw) as CheckpointState);
 }
 
 /** Atomic write: write to a temp file then rename, so a crash mid-write cannot corrupt the checkpoint. */

@@ -1,5 +1,6 @@
 import YahooFinance from "yahoo-finance2";
 import type { EnrichSlice, OHLCVBar, QuoteSlice } from "./types.js";
+import type { RawFundamentalsData, RawPeriod } from "../screen/fundamentals/types.js";
 import fetchConfig from "../../config/fetch.json" with { type: "json" };
 
 export const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
@@ -122,4 +123,61 @@ export async function fetchEnrichment(symbol: string): Promise<EnrichSlice> {
   }
 
   return slice;
+}
+
+function toRawPeriods(rows: Array<{ date: Date; totalRevenue?: number; grossProfit?: number; netIncome?: number }>): RawPeriod[] {
+  return rows
+    .map((r) => ({ date: r.date, totalRevenue: r.totalRevenue, grossProfit: r.grossProfit, netIncome: r.netIncome }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+/**
+ * Fetches raw fundamentals inputs for TASK_CARD_03 SCOPE 1 - three
+ * independent calls (a symbol-level quoteSummary for financialData +
+ * calendarEvents, plus two fundamentalsTimeSeries calls for quarterly
+ * and annual income-statement history), each tagged separately so one
+ * failing does not discard the others. validateResult:false on all
+ * three: fundamentalsTimeSeries in particular is prone to schema
+ * mismatches on less-common period shapes (verified live - a `type:
+ * 'trailing'` call threw on this exact validation for AAPL despite
+ * returning real, usable data), and we only read the handful of fields
+ * we need and defensively check for undefined below, so disabling
+ * validation does not weaken correctness. Deliberately does NOT use
+ * quoteSummary's incomeStatementHistory/incomeStatementHistoryQuarterly
+ * modules - the package's own runtime warning plus a live check both
+ * confirmed grossProfit is hardcoded to 0 there since ~Nov 2024;
+ * fundamentalsTimeSeries is the verified-working replacement.
+ */
+export async function fetchFundamentalsRaw(symbol: string): Promise<RawFundamentalsData> {
+  const now = Date.now();
+  const twoYearsAgo = new Date(now - 2 * 365 * 24 * 60 * 60 * 1000);
+  const fiveYearsAgo = new Date(now - 5 * 365 * 24 * 60 * 60 * 1000);
+
+  const [summaryResult, quarterlyResult, annualResult] = await Promise.allSettled([
+    yahooFinance.quoteSummary(symbol, { modules: ["financialData", "calendarEvents"] }, { validateResult: false }),
+    yahooFinance.fundamentalsTimeSeries(symbol, { period1: twoYearsAgo, type: "quarterly", module: "financials" }, { validateResult: false }),
+    yahooFinance.fundamentalsTimeSeries(symbol, { period1: fiveYearsAgo, type: "annual", module: "financials" }, { validateResult: false }),
+  ]);
+
+  const raw: RawFundamentalsData = { quarterlyFinancials: [], annualFinancials: [], earningsDates: [] };
+
+  if (summaryResult.status === "fulfilled") {
+    const { financialData, calendarEvents } = summaryResult.value as {
+      financialData?: { totalCash?: number; totalDebt?: number };
+      calendarEvents?: { earnings?: { earningsDate?: Date[] } };
+    };
+    raw.totalCash = financialData?.totalCash;
+    raw.totalDebt = financialData?.totalDebt;
+    raw.earningsDates = calendarEvents?.earnings?.earningsDate ?? [];
+  }
+
+  if (quarterlyResult.status === "fulfilled") {
+    raw.quarterlyFinancials = toRawPeriods(quarterlyResult.value);
+  }
+
+  if (annualResult.status === "fulfilled") {
+    raw.annualFinancials = toRawPeriods(annualResult.value);
+  }
+
+  return raw;
 }
