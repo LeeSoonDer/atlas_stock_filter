@@ -9,5 +9,7 @@ export { obvSeries, obvSlope } from "./obv.js";
 export { bollingerWidthSeries, bollingerWidthWithPercentile } from "./bollinger.js";
 export { sidewaysBaseDays } from "./sidewaysBase.js";
 export { trailingReturn } from "./relativeStrength.js";
+export { mostRecentPivotHigh, mostRecentPivotLow } from "./pivotPoints.js";
+export type { PivotPoint } from "./pivotPoints.js";
 export { percentileRank } from "./percentile.js";
 export type { IndicatorFlags, DetectorsConfig } from "./types.js";
