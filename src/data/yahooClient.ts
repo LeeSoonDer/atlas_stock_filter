@@ -153,6 +153,20 @@ export async function fetchEnrichment(symbol: string): Promise<EnrichSlice> {
   return slice;
 }
 
+/**
+ * TASK_CARD_04 SCOPE 2: a deliberately fresh (not cache-once) fetch of
+ * just institutionsPercentHeld, used to build a genuine cross-run
+ * snapshot history (checkpoint.institutionalHistory) - separate from
+ * fetchEnrichment's cached-once majorHoldersBreakdown fetch, since a
+ * real trend needs re-fetching, not reusing a stale cached value.
+ */
+export async function fetchInstitutionsPercentHeld(symbol: string): Promise<number | undefined> {
+  const result = (await yahooFinance.quoteSummary(symbol, { modules: ["majorHoldersBreakdown"] }, { validateResult: false })) as {
+    majorHoldersBreakdown?: { institutionsPercentHeld?: number };
+  };
+  return result.majorHoldersBreakdown?.institutionsPercentHeld;
+}
+
 function toRawPeriods(rows: Array<{ date: Date; totalRevenue?: number; grossProfit?: number; netIncome?: number }>): RawPeriod[] {
   return rows
     .map((r) => ({ date: r.date, totalRevenue: r.totalRevenue, grossProfit: r.grossProfit, netIncome: r.netIncome }))

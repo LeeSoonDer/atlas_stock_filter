@@ -1,8 +1,11 @@
-import { fetchEnrichment, fetchFundamentalsRaw, fetchQuoteBatch } from "./yahooClient.js";
+import { fetchEnrichment, fetchFundamentalsRaw, fetchInstitutionsPercentHeld, fetchQuoteBatch } from "./yahooClient.js";
 import { saveCheckpoint, type CheckpointState } from "./checkpoint.js";
 import { computeFundamentalFlags } from "../screen/fundamentals/computeFundamentalFlags.js";
+import { appendSnapshot } from "../screen/institutions/institutionalTrend.js";
+import { fetchTickerCikMaps, scanOneDailyIndex, fetchAndParseFiling, lookbackWindowDays } from "./insiders/index.js";
 import fetchConfig from "../../config/fetch.json" with { type: "json" };
 import card03Config from "../../config/card03.json" with { type: "json" };
+import card04Config from "../../config/card04.json" with { type: "json" };
 
 function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -149,3 +152,124 @@ export async function runFundamentalsPhase(
     }
   }
 }
+
+/**
+ * Phase Institutions (TASK_CARD_04 SCOPE 2): fetches a fresh
+ * institutionsPercentHeld for the full gate-passed universe and appends
+ * it to checkpoint.institutionalHistory. Deliberately NOT cache-once
+ * like Phase B - "done for this run" is tracked by whether today's date
+ * already has an entry, so an interrupted run resumes correctly and a
+ * same-day retry is automatic (no separate failure list needed, since
+ * this phase is designed to re-run fresh every day anyway).
+ */
+export async function runInstitutionalTrendPhase(
+  symbols: string[],
+  checkpoint: CheckpointState,
+  checkpointPath: string,
+): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10);
+  const remaining = symbols.filter((s) => !(checkpoint.institutionalHistory[s] ?? []).some((h) => h.asOf === today));
+  const batches = chunk(remaining, fetchConfig.enrichConcurrency);
+
+  for (const [i, batch] of batches.entries()) {
+    const settled = await Promise.allSettled(
+      batch.map((symbol) => withRetry(() => fetchInstitutionsPercentHeld(symbol), `institutions ${symbol}`)),
+    );
+    settled.forEach((result, idx) => {
+      const symbol = batch[idx];
+      if (result.status === "fulfilled" && result.value !== undefined) {
+        checkpoint.institutionalHistory[symbol] = appendSnapshot(checkpoint.institutionalHistory[symbol] ?? [], result.value);
+      } else if (result.status === "rejected") {
+        console.error(`[institutions phase] ${symbol} failed after retries: ${(result.reason as Error).message}`);
+      }
+    });
+    saveCheckpoint(checkpointPath, checkpoint);
+    if (i < batches.length - 1) {
+      await sleep(fetchConfig.delayMsBetweenEnrichBatches);
+    }
+  }
+}
+
+/**
+ * Phase Insiders-Index (TASK_CARD_04 SCOPE 1): scans one daily index per
+ * calendar day in the trailing lookbackDays window, caching each day's
+ * relevant filings permanently (daily indexes are immutable once SEC
+ * publishes them - a day is never rescanned once present in
+ * insiderDailyIndexCache, including days with zero relevant filings,
+ * e.g. weekends/holidays, whose empty array IS the cached result).
+ * Cheap relative to Phase Insiders-Filings below (~1 request/day vs.
+ * ~1 request/relevant-filing) - rate-limited via secFetch itself, not
+ * an extra delay here.
+ */
+export async function runInsidersIndexPhase(
+  cikSet: Set<string>,
+  tickerByCik: Map<string, string>,
+  checkpoint: CheckpointState,
+  checkpointPath: string,
+): Promise<void> {
+  const days = lookbackWindowDays(card04Config.insiders.lookbackDays, new Date());
+  const remaining = days.filter((d) => !(d in checkpoint.insiderDailyIndexCache));
+
+  let sinceLastSave = 0;
+  for (const day of remaining) {
+    const filings = await withRetry(
+      () => scanOneDailyIndex(day, cikSet, tickerByCik, card04Config.insiders.maxRequestsPerSecond),
+      `insider daily index ${day}`,
+    );
+    checkpoint.insiderDailyIndexCache[day] = filings;
+    sinceLastSave++;
+    if (sinceLastSave >= 5) {
+      saveCheckpoint(checkpointPath, checkpoint);
+      sinceLastSave = 0;
+    }
+  }
+  if (sinceLastSave > 0) saveCheckpoint(checkpointPath, checkpoint);
+}
+
+/**
+ * Phase Insiders-Filings (TASK_CARD_04 SCOPE 1): fetches + parses every
+ * relevant filing discovered by runInsidersIndexPhase that isn't already
+ * in insiderFilingResults/insiderFilingFailures. This is the card's
+ * single most expensive operation (~27,000 filings for the full 90-day
+ * window on a cold run per this card's own investigation) - rate-limited
+ * sequentially via secFetch, checkpointed every 50 filings (not every
+ * one - at this volume, per-filing disk writes would be a meaningful
+ * fraction of total runtime on their own) so an interruption loses at
+ * most 50 filings of progress, and a resumed run only fetches what's
+ * still missing (filings are immutable once published, so cached
+ * results are permanent - no re-fetch, ever, for a given accessionPath).
+ */
+export async function runInsidersFilingsPhase(
+  checkpoint: CheckpointState,
+  checkpointPath: string,
+): Promise<void> {
+  const allRelevant = Object.values(checkpoint.insiderDailyIndexCache).flat();
+  const done = new Set([...Object.keys(checkpoint.insiderFilingResults), ...checkpoint.insiderFilingFailures]);
+  const remaining = allRelevant.filter((f) => !done.has(f.accessionPath));
+
+  let sinceLastSave = 0;
+  for (const filing of remaining) {
+    try {
+      const parsed = await withRetry(
+        () => fetchAndParseFiling(filing, card04Config.insiders.maxRequestsPerSecond),
+        `insider filing ${filing.accessionPath}`,
+      );
+      if (parsed) {
+        checkpoint.insiderFilingResults[filing.accessionPath] = parsed;
+      } else {
+        checkpoint.insiderFilingFailures.push(filing.accessionPath);
+      }
+    } catch (err) {
+      console.error(`[insider filings phase] ${filing.accessionPath} failed after retries: ${(err as Error).message}`);
+      checkpoint.insiderFilingFailures.push(filing.accessionPath);
+    }
+    sinceLastSave++;
+    if (sinceLastSave >= 50) {
+      saveCheckpoint(checkpointPath, checkpoint);
+      sinceLastSave = 0;
+    }
+  }
+  if (sinceLastSave > 0) saveCheckpoint(checkpointPath, checkpoint);
+}
+
+export { fetchTickerCikMaps };
