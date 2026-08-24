@@ -97,31 +97,101 @@
     its real 30 accumulated entries (constitutionally required permanent
     record, unlike every other regenerable output/ file).
 
+- TASK_CARD_05 independent verification: returned CONFIRMED on every
+  internally-checkable DONE-WHEN item and MUST-NOT constraint, via its
+  own from-scratch re-derivation (its own 2 additional live pipeline
+  runs, its own greps of the DISSENT payloads, its own tsc/test runs,
+  its own ledger append-only trace). The verifier's 2 extra live runs
+  added 30 more genuine ledger entries (60 total); confirmed via git
+  diff as a pure append and committed (035009d).
+- TASK_CARD_06 - "打磨与验收周" (v1 wrap-up card). IN PROGRESS.
+  - SCOPE 2 (运行日志完善) DONE, committed (0aaf581): runScreen now
+    marks 16 named phase boundaries and rolls them into a 4-category
+    timing breakdown (宇宙/抓取/检测/报告) plus a per-symbol failure
+    attribution map (quote/enrichment/fundamentals phases only -
+    insider filing failures are accession-path-keyed, not symbol-
+    keyed, so deliberately excluded rather than force-mapped). Surfaced
+    both as a console.error summary line and as new
+    runMeta.timingBreakdown / runMeta.failureAttribution fields.
+  - SCOPE 3 (金丝雀 payload 冻结) DONE, committed (6ebf709): the first
+    real-market-data ATLAS PAYLOAD + DISSENT PAYLOAD (run
+    2026-08-24T14:07:43.049Z) copied into canary/ as
+    atlas_payload_baseline.txt / atlas_dissent_payload_baseline.txt,
+    with canary/README.md explicitly documenting these as a structural
+    drift baseline (契约等价/方向等价 per the constitution's S2 canary
+    mechanism), NOT a record of a completed Radar/Red-Team review -
+    that review still hasn't happened (see SCOPE 1 below).
+  - SCOPE 4 (README.md) DONE, committed (8b06008): appended an
+    operational "运行手册" section to README.md (installation, full
+    command table incl. every output artifact file, config/*.json
+    reference cross-checked against actual file contents, troubleshooting
+    covering every failure mode this project has actually hit/documented).
+    Kept distinct from SETUP.md (one-time bootstrap doc) rather than
+    merging them.
+  - SCOPE 1 (真实周期问题清单) explicitly accepted as empty by the
+    project owner's direction, not fabricated or found - see
+    ai/decisions.md 2026-08-24 entry. No real screen -> Atlas Radar ->
+    Atlas Red Team cycle has happened yet (no sop/SOP_WEEKLY.md exists);
+    asked the project owner directly rather than guessing, they chose
+    to accept SCOPE 1 as empty and proceed.
+  - SCOPE 5 (git tag v1.0-layer1 + push) PENDING - project owner
+    authorized ("tag and push once ready") but this is gated on
+    DONE-WHEN item 2 (fresh clone runs through from scratch) actually
+    closing out - see In Progress below.
+
 ## In Progress
-- Independent verification of TASK_CARD_05 dispatched in the background;
-  awaiting its report.
+- DONE-WHEN item 2 ("新机器按 README 可从零跑通,用 fresh clone 验证"):
+  the fast/structural half is done and real (not simulated) - a genuine
+  `git clone` of the local repo into a scratch dir, `npm install`,
+  `npx tsc --noEmit`, and `npm test` all ran clean with zero manual
+  fixups (126/126 tests), proving the repo is fully self-sufficient
+  from a clean checkout. The expensive half - a full `npm run screen`
+  cold-start (whole-universe quote/OHLCV fetch + 90-day EDGAR Form 4
+  backfill, ~2.5-3 hours against live external APIs) - is running RIGHT
+  NOW in that same fresh-clone scratch directory
+  (C:\Users\SD\AppData\Local\Temp\claude\c--Users-SD-Desktop\
+  f84e2121-ead0-4c9f-941f-be94a160b657\scratchpad\atlas_fresh_clone\
+  screen_run_fresh_clone.log), launched via `nohup ... &` so it survives
+  independently of any single tool-call's lifecycle. A separate
+  polling watcher (grep-until-terminal-line loop) is tracking it for
+  completion notification. Once it finishes (success or failure), the
+  next steps are: verify its actual output, then (per project owner's
+  standing authorization) `git tag v1.0-layer1` and push both the
+  branch and tag to origin, closing out SCOPE 5 and this whole card.
 
 ## Next Priorities
-1. Review TASK_CARD_05's independent verification report once it returns.
-2. User to decide next step: TASK_CARD_06 (if one exists) or something
-   else. Do not proceed further without an explicit new instruction.
-3. git push CARD_02/03/04/03_PATCH/05's commits once the user confirms
-   (only CARD 01 is on origin/master as of this writing).
-4. User should open the generated atlas_report_*.html in a real browser
-   and paste an atlas_payload_*.txt into Atlas Radar at least once, to
-   close the two verification gaps noted above.
-5. Undecided: full per-symbol OHLCV bars still live only in
+1. Once the fresh-clone cold-start run completes: inspect its actual
+   result (all 3 artifacts generated, ledger appended, no fatal error),
+   then git tag v1.0-layer1 and push to origin/master (already
+   authorized by the project owner - see above, no need to re-ask).
+2. After that push: do the TASK_CARD_06 Memory Update Obligation write
+   (this file + ai/decisions.md) marking the card fully DONE, and give
+   the project owner the final DONE-WHEN report.
+3. User should still, at their own convenience, open a generated
+   atlas_report_*.html in a real browser and paste an atlas_payload_*.txt
+   into Atlas Radar at least once - these 2 verification gaps (from
+   TASK_CARD_05) remain open; per the SCOPE 1 decision above, any
+   friction that surfaces from finally doing this should be logged as
+   a normal decisions.md entry / follow-up fix rather than reopening
+   CARD 06.
+4. Undecided: full per-symbol OHLCV bars still live only in
    output/checkpoint.json (now includes insider/institutional data too,
    very large), gitignored - a future card should decide their permanent
    storage/access pattern.
-6. If the user ever wants FMP's PEG/P-E/P-B cross-check live, set
+5. If the user ever wants FMP's PEG/P-E/P-B cross-check live, set
    FMP_API_KEY in .env (see .env.example) - no code change needed, but
    the first live run's response shape should be spot-checked against
    the WebSearch-verified (not live-verified) field names in
    src/data/enrich/computeFmpEnrichment.ts.
+6. Post-v1 roadmap (all optional, none required for v1): CARD 04b
+   (EDGAR 13F incremental parsing), CARD 07 (Next.js dashboard), CARD 08
+   (MCP thin proxy) - see cards/TASK_CARD_06_AND_ROADMAP.md for each
+   one's stated trigger condition. None should be started without the
+   project owner explicitly requesting that specific card.
 
 ## Blockers
-- None.
+- None (the fresh-clone cold-start run is in-progress background work,
+  not a blocker on anything else).
 
 ## Temporary Notes
 - output/checkpoint.json is large and gitignored - a reusable local
