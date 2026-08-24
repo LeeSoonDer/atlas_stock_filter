@@ -62,5 +62,20 @@ export function computeIndicators(bars: OHLCVBar[], config: DetectorsConfig): In
     rs6MonthPercentile: null,
     tradingDaysAvailable: clean.length,
     latestClose,
+    // TASK_CARD_04 institutional fields: not this function's concern (it
+    // stays a pure OHLCV-only computation) - the pipeline overwrites
+    // these after the insider/institutional-trend/short-interest phases
+    // run. Defaulting to "not available yet" rather than omitting them
+    // keeps IndicatorFlags's type honest about what every field means.
+    insiderCluster: null,
+    insiderClusterDistinctBuyers: null,
+    insiderClusterLagDays: null,
+    institutionalTrend: null,
+    institutionalTrendAvailability: "不可得",
+    shortInterestChangePercent: null,
+    shortInterestDaysToCover: null,
+    shortInterestPercentOfFloat: null,
+    shortInterestLagDays: null,
+    shortInterestAvailability: "不可得",
   };
 }

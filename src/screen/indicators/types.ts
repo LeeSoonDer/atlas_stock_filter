@@ -27,6 +27,24 @@ export interface IndicatorFlags {
   rs6MonthPercentile: number | null;
   tradingDaysAvailable: number;
   latestClose: number | null;
+
+  /**
+   * TASK_CARD_04 SCOPE 6: "机构证据全部带滞后天数标注,并入flags" -
+   * institutional evidence, always merged into flags. Populated by the
+   * pipeline (not computeIndicators, which stays a pure OHLCV-only
+   * function) after the insider/institutional-trend/short-interest
+   * phases run. null/不可得 when genuinely unavailable - never fabricated.
+   */
+  insiderCluster: boolean | null;
+  insiderClusterDistinctBuyers: number | null;
+  insiderClusterLagDays: number | null;
+  institutionalTrend: "up" | "down" | "flat" | null;
+  institutionalTrendAvailability: "可得" | "不可得";
+  shortInterestChangePercent: number | null;
+  shortInterestDaysToCover: number | null;
+  shortInterestPercentOfFloat: number | null;
+  shortInterestLagDays: number | null;
+  shortInterestAvailability: "可得" | "不可得";
 }
 
 export interface DetectorsConfig {
@@ -60,5 +78,11 @@ export interface DetectorsConfig {
     week52PositionThreshold: number;
     stopLossVolumeRatioThreshold: number;
     stopLossLookbackDays: number;
+  };
+  /** Reshaped from config/card04.json at wire-up time (single source of truth stays card04.json) - see pipeline.ts. */
+  detectorD_institutionalAccumulation: {
+    minConditionsRequired: number;
+    shortInterestSignificantDeclinePercent: number;
+    squeezeMinFloatPercent: number;
   };
 }
