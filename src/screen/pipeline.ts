@@ -1,14 +1,25 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { buildUniverse } from "../universe/index.js";
 import type { ExclusionReason } from "../universe/types.js";
-import { runQuotePhase, runEnrichmentPhase, runFundamentalsPhase } from "../data/batchFetcher.js";
+import {
+  runQuotePhase,
+  runEnrichmentPhase,
+  runFundamentalsPhase,
+  runInstitutionalTrendPhase,
+  runInsidersIndexPhase,
+  runInsidersFilingsPhase,
+  fetchTickerCikMaps,
+} from "../data/batchFetcher.js";
 import { loadCheckpoint } from "../data/checkpoint.js";
 import { fetchChartBars } from "../data/yahooClient.js";
+import { fetchLatestShortInterestFile } from "../data/short/fetchShortInterest.js";
+import { aggregateInsiderClusters } from "../data/insiders/aggregateInsiderClusters.js";
 import type { Availability, FundamentalsSlice, QuoteSlice } from "../data/types.js";
 import type { ProfileArg, ProfileName, ProfilesConfig } from "./types.js";
 import profilesConfig from "../../config/profiles.json" with { type: "json" };
 import detectorsConfigJson from "../../config/detectors.json" with { type: "json" };
 import card03ConfigJson from "../../config/card03.json" with { type: "json" };
+import card04ConfigJson from "../../config/card04.json" with { type: "json" };
 import { computeIndicators } from "./indicators/computeIndicators.js";
 import { percentileRank } from "./indicators/percentile.js";
 import { trailingReturn } from "./indicators/relativeStrength.js";
@@ -22,11 +33,28 @@ import type { SectorConfig, SectorRanking, SectorReturns } from "./sector/types.
 import { computeMarketRegime } from "./regime/marketRegime.js";
 import type { MarketRegimeSnapshot, RegimeConfig } from "./regime/types.js";
 import type { FundamentalsConfig } from "./fundamentals/types.js";
+import { computeInstitutionalTrend } from "./institutions/institutionalTrend.js";
+import type { InstitutionalTrendConfig } from "./institutions/types.js";
+import type { InsiderClusterConfig } from "../data/insiders/types.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
 const card03Config = card03ConfigJson as SectorConfig & RegimeConfig & FundamentalsConfig & {
   dataLookback: { spyCalendarDays: number; vixCalendarDays: number; sectorEtfCalendarDays: number };
+};
+const card04Config = card04ConfigJson as InsiderClusterConfig &
+  InstitutionalTrendConfig & {
+    shortInterest: { significantDeclinePercent: number; squeezeMinFloatPercent: number; settlementDateWalkBackDays: number };
+    detectorD: { minConditionsRequired: number };
+  };
+/** Reshapes card04Config's threshold values into DetectorsConfig's shape at wire-up time - card04.json stays the single source of truth for its own numbers (see Detector D's own file comment). */
+const combinedDetectorsConfig: DetectorsConfig = {
+  ...detectorsConfig,
+  detectorD_institutionalAccumulation: {
+    minConditionsRequired: card04Config.detectorD.minConditionsRequired,
+    shortInterestSignificantDeclinePercent: card04Config.shortInterest.significantDeclinePercent,
+    squeezeMinFloatPercent: card04Config.shortInterest.squeezeMinFloatPercent,
+  },
 };
 
 /**
@@ -143,6 +171,19 @@ export interface ScreenRunResult {
     /** TASK_CARD_03 SCOPE 2/3. */
     sectorRankings: SectorRanking[];
     marketRegime: MarketRegimeSnapshot;
+    /** TASK_CARD_04. */
+    insiders: {
+      daysScanned: number;
+      relevantFilingsFound: number;
+      filingsParsed: number;
+      filingsFailed: number;
+      symbolsWithCluster: number;
+    };
+    shortInterest: {
+      settlementDate: string | null;
+      lagDays: number | null;
+      recordCount: number;
+    };
     elapsedMs: number;
   };
   symbols: ScreenOutputSymbol[];
@@ -190,11 +231,68 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   await runEnrichmentPhase(gatePassed.map((g) => g.symbol), checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase B done: ${Object.keys(checkpoint.enrichResults).length} enriched total, ${checkpoint.enrichFailures.length} failed total`);
 
+  // TASK_CARD_04: insider/institutional/short-interest evidence must be
+  // ready BEFORE indicator/detector computation below, unlike CARD 03's
+  // fundamentals (which runs after, since it doesn't gate a detector) -
+  // Detector D needs this data merged into flags to evaluate at all.
+  const gatePassedSymbols = gatePassed.map((g) => g.symbol);
+
+  console.error(`[screen] Phase insiders-index: scanning ${card04Config.insiders.lookbackDays} days of SEC daily indexes...`);
+  const { cikByTicker, tickerByCik } = await fetchTickerCikMaps(card04Config.insiders.maxRequestsPerSecond);
+  const universeCikSet = new Set(gatePassedSymbols.map((s) => cikByTicker.get(s)).filter((c): c is string => c !== undefined));
+  await runInsidersIndexPhase(universeCikSet, tickerByCik, checkpoint, CHECKPOINT_PATH);
+  const relevantFilingCount = Object.values(checkpoint.insiderDailyIndexCache).reduce((a, f) => a + f.length, 0);
+  console.error(`[screen] Phase insiders-index done: ${Object.keys(checkpoint.insiderDailyIndexCache).length} days scanned, ${relevantFilingCount} relevant filings found`);
+
+  console.error(`[screen] Phase insiders-filings: fetching + parsing ${relevantFilingCount} filings (this is the slow one)...`);
+  await runInsidersFilingsPhase(checkpoint, CHECKPOINT_PATH);
+  console.error(`[screen] Phase insiders-filings done: ${Object.keys(checkpoint.insiderFilingResults).length} parsed total, ${checkpoint.insiderFilingFailures.length} failed total`);
+
+  const insiderClusters = aggregateInsiderClusters(
+    Object.values(checkpoint.insiderFilingResults),
+    card04Config.insiders.lookbackDays,
+    card04Config.insiders.clusterMinDistinctBuyers,
+    new Date(),
+  );
+
+  console.error(`[screen] Phase institutions: fresh institutional-ownership snapshot for ${gatePassedSymbols.length} symbols...`);
+  await runInstitutionalTrendPhase(gatePassedSymbols, checkpoint, CHECKPOINT_PATH);
+  console.error(`[screen] Phase institutions done`);
+
+  console.error(`[screen] Phase short-interest: fetching latest FINRA file...`);
+  const shortInterestFile = await fetchLatestShortInterestFile(card04Config.shortInterest.settlementDateWalkBackDays);
+  console.error(
+    shortInterestFile
+      ? `[screen] Phase short-interest done: settlementDate=${shortInterestFile.settlementDate} lagDays=${shortInterestFile.lagDays} records=${shortInterestFile.records.size}`
+      : `[screen] Phase short-interest: no file found within the configured walk-back window`,
+  );
+
   console.error(`[screen] Phase indicators: computing technical indicators for ${gatePassed.length} symbols...`);
   const flagsBySymbol = new Map<string, IndicatorFlags>();
   for (const { symbol } of gatePassed) {
     const ohlcv = checkpoint.enrichResults[symbol]?.ohlcv ?? [];
-    flagsBySymbol.set(symbol, computeIndicators(ohlcv, detectorsConfig));
+    const flags = computeIndicators(ohlcv, combinedDetectorsConfig);
+
+    const cluster = insiderClusters.get(symbol);
+    flags.insiderCluster = cluster ? cluster.insiderCluster : false;
+    flags.insiderClusterDistinctBuyers = cluster?.distinctBuyerCount ?? 0;
+    flags.insiderClusterLagDays = cluster?.lagDays ?? null;
+
+    const trendResult = computeInstitutionalTrend(checkpoint.institutionalHistory[symbol] ?? [], card04Config);
+    flags.institutionalTrend = trendResult.trend;
+    flags.institutionalTrendAvailability = trendResult.availability;
+
+    const si = shortInterestFile?.records.get(symbol);
+    const floatShares = checkpoint.enrichResults[symbol]?.floatShares;
+    if (si) {
+      flags.shortInterestChangePercent = si.changePercent;
+      flags.shortInterestDaysToCover = si.daysToCover;
+      flags.shortInterestPercentOfFloat = floatShares && floatShares > 0 ? (si.currentShortShares / floatShares) * 100 : null;
+      flags.shortInterestLagDays = shortInterestFile!.lagDays;
+      flags.shortInterestAvailability = "可得";
+    }
+
+    flagsBySymbol.set(symbol, flags);
   }
 
   // RS percentile ranking is cross-symbol ("全宇宙" = every symbol in this
@@ -220,7 +318,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     const enrich = checkpoint.enrichResults[symbol];
     const flags = flagsBySymbol.get(symbol)!;
 
-    const results: DetectorResult[] = allDetectors.map((d) => d.detect(flags, profile, detectorsConfig));
+    const results: DetectorResult[] = allDetectors.map((d) => d.detect(flags, profile, combinedDetectorsConfig));
     const buckets: string[] = [];
     const bucketScores: Record<string, number> = {};
     for (const r of results) {
@@ -297,6 +395,18 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       fundamentalsFetchFailures: checkpoint.fundamentalsFailures,
       sectorRankings,
       marketRegime,
+      insiders: {
+        daysScanned: Object.keys(checkpoint.insiderDailyIndexCache).length,
+        relevantFilingsFound: Object.values(checkpoint.insiderDailyIndexCache).reduce((a, f) => a + f.length, 0),
+        filingsParsed: Object.keys(checkpoint.insiderFilingResults).length,
+        filingsFailed: checkpoint.insiderFilingFailures.length,
+        symbolsWithCluster: [...insiderClusters.values()].filter((c) => c.insiderCluster).length,
+      },
+      shortInterest: {
+        settlementDate: shortInterestFile?.settlementDate ?? null,
+        lagDays: shortInterestFile?.lagDays ?? null,
+        recordCount: shortInterestFile?.records.size ?? 0,
+      },
       elapsedMs: Date.now() - t0,
     },
     symbols: enrichedSymbols,
