@@ -134,64 +134,73 @@
     Atlas Red Team cycle has happened yet (no sop/SOP_WEEKLY.md exists);
     asked the project owner directly rather than guessing, they chose
     to accept SCOPE 1 as empty and proceed.
-  - SCOPE 5 (git tag v1.0-layer1 + push) PENDING - project owner
-    authorized ("tag and push once ready") but this is gated on
-    DONE-WHEN item 2 (fresh clone runs through from scratch) actually
-    closing out - see In Progress below.
+  - SCOPE 5 (git tag v1.0-layer1 + push) DONE - see below.
+  - DONE-WHEN item 2 ("新机器按 README 可从零跑通,用 fresh clone 验证")
+    CONFIRMED for real, in two parts across a mid-run interruption. A
+    genuine `git clone` of the local repo into a scratch dir, then
+    `npm install` / `npx tsc --noEmit` / `npm test` all ran clean with
+    zero manual fixups (126/126 tests) - proves the repo is fully
+    self-sufficient from a clean checkout. Then the full
+    `npm run screen -- --profile both` cold start was launched in that
+    same fresh clone; the user shut down the desktop partway through
+    (during the Form-4 filing-parsing phase, at 18,244/31,992 filings,
+    0 failures) - the run died with the machine, but its checkpoint had
+    saved incrementally throughout, so relaunching the identical
+    command picked up from there rather than restarting. It completed
+    end to end: `[cli] done in 3995411ms` (~66.6 min for the resumed
+    leg), 0 failures on quote/enrichment/fundamentals fetch phases (4
+    symbols - FISV/NHIC/LION/NIQ - failed the institutional-snapshot
+    phase after retries and were skipped without blocking the run, per-
+    symbol isolation working as designed), all 3 report artifacts +15
+    ledger entries produced. This is real evidence a fresh clone works
+    end to end, including surviving an actual process death and resume
+    - not a simulated or partial check.
+  - TASK_CARD_06 is now DONE. Tagged `v1.0-layer1` and pushed
+    branch+tag to origin/master (GitHub: LeeSoonDer/atlas_stock_filter)
+    - this is the first push since TASK_CARD_01 (everything from CARD
+    02 through CARD 06 was local-only until now).
 
 ## In Progress
-- DONE-WHEN item 2 ("新机器按 README 可从零跑通,用 fresh clone 验证"):
-  the fast/structural half is done and real (not simulated) - a genuine
-  `git clone` of the local repo into a scratch dir, `npm install`,
-  `npx tsc --noEmit`, and `npm test` all ran clean with zero manual
-  fixups (126/126 tests), proving the repo is fully self-sufficient
-  from a clean checkout. The expensive half - a full `npm run screen`
-  cold-start (whole-universe quote/OHLCV fetch + 90-day EDGAR Form 4
-  backfill, ~2.5-3 hours against live external APIs) - is running RIGHT
-  NOW in that same fresh-clone scratch directory
-  (C:\Users\SD\AppData\Local\Temp\claude\c--Users-SD-Desktop\
-  f84e2121-ead0-4c9f-941f-be94a160b657\scratchpad\atlas_fresh_clone\
-  screen_run_fresh_clone.log), launched via `nohup ... &` so it survives
-  independently of any single tool-call's lifecycle. A separate
-  polling watcher (grep-until-terminal-line loop) is tracking it for
-  completion notification. Once it finishes (success or failure), the
-  next steps are: verify its actual output, then (per project owner's
-  standing authorization) `git tag v1.0-layer1` and push both the
-  branch and tag to origin, closing out SCOPE 5 and this whole card.
+- Nothing active. Awaiting the project owner's next instruction (v1.0
+  is complete and pushed; post-v1 roadmap cards are all optional and
+  trigger-condition-gated - see Next Priorities).
 
 ## Next Priorities
-1. Once the fresh-clone cold-start run completes: inspect its actual
-   result (all 3 artifacts generated, ledger appended, no fatal error),
-   then git tag v1.0-layer1 and push to origin/master (already
-   authorized by the project owner - see above, no need to re-ask).
-2. After that push: do the TASK_CARD_06 Memory Update Obligation write
-   (this file + ai/decisions.md) marking the card fully DONE, and give
-   the project owner the final DONE-WHEN report.
-3. User should still, at their own convenience, open a generated
+1. User should, at their own convenience, open a generated
    atlas_report_*.html in a real browser and paste an atlas_payload_*.txt
    into Atlas Radar at least once - these 2 verification gaps (from
-   TASK_CARD_05) remain open; per the SCOPE 1 decision above, any
-   friction that surfaces from finally doing this should be logged as
-   a normal decisions.md entry / follow-up fix rather than reopening
-   CARD 06.
-4. Undecided: full per-symbol OHLCV bars still live only in
+   TASK_CARD_05, never closed by CARD_06 since SCOPE 1 was accepted-
+   empty) remain open. Any friction that surfaces from finally doing
+   this should be logged as a normal decisions.md entry / follow-up fix,
+   not treated as reopening a card.
+2. Undecided: full per-symbol OHLCV bars still live only in
    output/checkpoint.json (now includes insider/institutional data too,
    very large), gitignored - a future card should decide their permanent
    storage/access pattern.
-5. If the user ever wants FMP's PEG/P-E/P-B cross-check live, set
+3. If the user ever wants FMP's PEG/P-E/P-B cross-check live, set
    FMP_API_KEY in .env (see .env.example) - no code change needed, but
    the first live run's response shape should be spot-checked against
    the WebSearch-verified (not live-verified) field names in
    src/data/enrich/computeFmpEnrichment.ts.
-6. Post-v1 roadmap (all optional, none required for v1): CARD 04b
-   (EDGAR 13F incremental parsing), CARD 07 (Next.js dashboard), CARD 08
-   (MCP thin proxy) - see cards/TASK_CARD_06_AND_ROADMAP.md for each
-   one's stated trigger condition. None should be started without the
-   project owner explicitly requesting that specific card.
+4. Post-v1 roadmap (all optional, none required for v1, none should be
+   started without the project owner explicitly requesting that
+   specific card - see cards/TASK_CARD_06_AND_ROADMAP.md for each
+   one's stated trigger condition):
+   - CARD 04b - EDGAR 13F incremental parsing. Trigger: institutional
+     bucket proves its value in the forward ledger AND Form 4 proxy
+     proves insufficient.
+   - CARD 07 - Next.js dashboard (reuses Cockpit's P4_DESIGN_SPEC).
+     Trigger: after 1-2 months of using the HTML report, user wants an
+     interactive UI.
+   - CARD 08 - MCP thin proxy (build_atlas_payload/save_brief/
+     save_dissent tools). Trigger: manual copy-paste friction starts
+     causing the user to skip the red-team step.
+   - Independent parallel line - Cockpit v1.3 反哺 patch (ACH dual-
+     hypothesis etc.) - explicitly NOT an Atlas task, separate session/
+     task card only.
 
 ## Blockers
-- None (the fresh-clone cold-start run is in-progress background work,
-  not a blocker on anything else).
+- None.
 
 ## Temporary Notes
 - output/checkpoint.json is large and gitignored - a reusable local
