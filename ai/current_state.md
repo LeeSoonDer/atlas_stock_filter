@@ -158,7 +158,35 @@
   - TASK_CARD_06 is now DONE. Tagged `v1.0-layer1` and pushed
     branch+tag to origin/master (GitHub: LeeSoonDer/atlas_stock_filter)
     - this is the first push since TASK_CARD_01 (everything from CARD
-    02 through CARD 06 was local-only until now).
+    02 through CARD 06 was local-only until now). Independent
+    verification returned CONFIRMED on every SCOPE item and DONE-WHEN
+    item (its own fresh clone/install/typecheck/test, its own
+    hash-for-hash `git ls-remote` check that the push really landed,
+    its own spot-checks of every README claim against real repo
+    contents). One nitpick fixed: decisions.md's "no sop/SOP_WEEKLY.md"
+    wording was corrected to note the file does exist (as an unfilled
+    template) - the substantive claim (no real cycle happened) was
+    already correct.
+- Post-v1, direct request (not a task card) - output/ reorganized into
+  per-run-date folders. DONE, 3 commits (2f70f90 code, cd3eee8 docs,
+  2ba9ea3 ledger growth). See ai/decisions.md 2026-08-25 entry for full
+  reasoning. Every `npm run screen` run now writes to
+  `output/runs/{YYYY-MM-DD}/` (same-day re-runs get an `_HHMM` suffix)
+  with fixed filenames (ATLAS_PAYLOAD.txt, ATLAS_DISSENT_PAYLOAD.txt,
+  report.html, screen_run.json) instead of flat output/ files with a
+  timestamp in the name. New output/latest.html always mirrors the
+  newest report. ledger.jsonl/checkpoint.json untouched at output/
+  root (out of scope - global files, not per-run artifacts).
+  `resolveRunFolder` extracted to its own file with a real 4-case unit
+  test suite. 4 pre-existing historical runs hand-migrated into
+  output/runs/2026-08-24/ (+ _1409/_1418/_1419 for the 3 later
+  same-day runs) - gitignored, so this left no git history. README.md,
+  canary/README.md, and docs/sop/SOP_WEEKLY.md all updated to the new
+  paths in the same change. Live-validated with a real run on a new
+  calendar day (2026-08-25): got the bare date folder as expected
+  (correct - no prior folder for that date), output/latest.html
+  verified byte-identical to that run's report.html via diff. npx tsc
+  --noEmit clean, npm test 130/130 (126 prior + 4 new).
 
 ## In Progress
 - Nothing active. Awaiting the project owner's next instruction (v1.0
@@ -167,12 +195,13 @@
 
 ## Next Priorities
 1. User should, at their own convenience, open a generated
-   atlas_report_*.html in a real browser and paste an atlas_payload_*.txt
-   into Atlas Radar at least once - these 2 verification gaps (from
-   TASK_CARD_05, never closed by CARD_06 since SCOPE 1 was accepted-
-   empty) remain open. Any friction that surfaces from finally doing
-   this should be logged as a normal decisions.md entry / follow-up fix,
-   not treated as reopening a card.
+   output/runs/<date>/report.html (or output/latest.html for the
+   newest one) in a real browser and paste an
+   output/runs/<date>/ATLAS_PAYLOAD.txt into Atlas Radar at least once
+   - these 2 verification gaps (from TASK_CARD_05, never closed by
+   CARD_06 since SCOPE 1 was accepted-empty) remain open. Any friction
+   that surfaces from finally doing this should be logged as a normal
+   decisions.md entry / follow-up fix, not treated as reopening a card.
 2. Undecided: full per-symbol OHLCV bars still live only in
    output/checkpoint.json (now includes insider/institutional data too,
    very large), gitignored - a future card should decide their permanent
