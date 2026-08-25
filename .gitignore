@@ -11,9 +11,8 @@ Thumbs.db
 
 # Atlas Layer 1 run artifacts (regenerable; not source)
 output/*.json
-output/atlas_payload_*.txt
-output/atlas_dissent_payload_*.txt
-output/atlas_report_*.html
+output/runs/
+output/latest.html
 !output/.gitkeep
 
 # output/ledger.jsonl is deliberately NOT ignored: the forward outcome

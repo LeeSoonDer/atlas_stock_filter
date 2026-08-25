@@ -57,6 +57,7 @@ import {
 } from "../ledger/index.js";
 import type { ScreeningLedgerEntry } from "../ledger/types.js";
 import card05ConfigJson from "../../config/card05.json" with { type: "json" };
+import { resolveRunFolder } from "./resolveRunFolder.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
@@ -276,6 +277,8 @@ export interface ScreenRunResult {
     candidates: SelectedCandidate[];
     watchlist: WatchlistEntry[];
     promotedThisRun: string[];
+    /** output/runs/{YYYY-MM-DD[_HHMM]} - the per-run dated folder holding all 4 of this run's artifact files (see resolveRunFolder). */
+    runFolder: string;
     atlasPayloadPath: string;
     dissentPayloadPath: string;
     htmlReportPath: string;
@@ -621,15 +624,18 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     ledgerInvalidated: invalidatedEntries,
   });
 
-  const tsSuffix = runTimestamp.replace(/[:.]/g, "-");
-  mkdirSync("output", { recursive: true });
-  const atlasPayloadPath = `output/atlas_payload_${tsSuffix}.txt`;
-  const dissentPayloadPath = `output/atlas_dissent_payload_${tsSuffix}.txt`;
-  const htmlReportPath = `output/atlas_report_${tsSuffix}.html`;
+  const runFolder = resolveRunFolder(runTimestamp);
+  mkdirSync(runFolder, { recursive: true });
+  const atlasPayloadPath = `${runFolder}/ATLAS_PAYLOAD.txt`;
+  const dissentPayloadPath = `${runFolder}/ATLAS_DISSENT_PAYLOAD.txt`;
+  const htmlReportPath = `${runFolder}/report.html`;
   writeFileSync(atlasPayloadPath, atlasPayloadText, "utf-8");
   writeFileSync(dissentPayloadPath, dissentPayloadText, "utf-8");
   writeFileSync(htmlReportPath, htmlReportText, "utf-8");
-  console.error(`[screen] Phase reporting done: ${atlasPayloadPath}, ${dissentPayloadPath}, ${htmlReportPath}`);
+  // Always-current pointer to the most recent report, independent of date -
+  // "看最新报告" never requires knowing which dated folder to look in.
+  writeFileSync("output/latest.html", htmlReportText, "utf-8");
+  console.error(`[screen] Phase reporting done: ${atlasPayloadPath}, ${dissentPayloadPath}, ${htmlReportPath} (+ output/latest.html updated)`);
   mark("report_generate");
 
   // TASK_CARD_05 SCOPE 6: ledger append (candidates + watchlist). Never
@@ -752,6 +758,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       candidates: selectedCandidates,
       watchlist: watchlistEntries,
       promotedThisRun,
+      runFolder,
       atlasPayloadPath,
       dissentPayloadPath,
       htmlReportPath,
@@ -766,8 +773,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
  * final storage location once detectors need to consume them.
  */
 export function writeScreenOutput(result: ScreenRunResult): string {
-  const ts = result.runMeta.timestamp.replace(/[:.]/g, "-");
-  const path = `output/screen_run_${ts}.json`;
+  const path = `${result.selection.runFolder}/screen_run.json`;
   writeFileSync(path, JSON.stringify(result, null, 2), "utf-8");
   return path;
 }
