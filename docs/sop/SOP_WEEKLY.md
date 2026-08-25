@@ -9,7 +9,7 @@ cd C:\Users\SD\Desktop\atlas
 npm run screen -- --profile both    # 或 standard / small_spec
 ```
 
-产出:output/ 下 JSON + HTML 报告 + 两份 payload 文本。
+产出:output/runs/{今天日期}/ 下 JSON + HTML 报告 + 两份 payload 文本(同一天多跑一次会自动加时间后缀,互不覆盖);output/latest.html 始终指向最新一次报告。
 
 ## 第 2 步:看报告(5 分钟)
 
@@ -24,14 +24,14 @@ npm run screen -- --profile both    # 或 standard / small_spec
 1. 复制 ATLAS PAYLOAD 全文
 2. 贴入 Atlas Radar Project 新对话
 3. 收辩护状(每候选一份 + 尾部 JSON 块)
-4. 全文存入 output/briefs/{date}.md
+4. 全文存入本次运行的日期文件夹:output/runs/{date}/brief.md(与同次运行的 PAYLOAD/报告并排存放,方便对照)
 
 ## 第 4 步:Red Team 攻击(10 分钟)
 
 1. 复制 ATLAS DISSENT PAYLOAD 全文
 2. 贴入 Atlas Red Team Project **新对话**(永远新对话,不续旧)
 3. 收裁决:注意四级分级——`NO EFFECTIVE ATTACK` 是好消息不是敷衍;`MATERIAL RISK` 才需要你把 Radar 确信度打折
-4. 存入 output/dissent/{date}.md
+4. 存入本次运行的日期文件夹:output/runs/{date}/dissent.md(与同次运行的 DISSENT PAYLOAD 并排存放,方便对照)
 5. 看清单级盲区审计那一段,有意思就记一笔
 
 ## 第 5 步:人类裁决(10 分钟,系统的宪法闸门)

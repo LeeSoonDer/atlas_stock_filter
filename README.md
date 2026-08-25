@@ -71,16 +71,19 @@ copy .env.example .env
 | `npm test` | `node:test` 跑全部 `src/**/*.test.ts`(零新增测试框架依赖)。 |
 | `npm run build` | `tsc -p tsconfig.json` 编译到 `dist/`(日常开发不需要,`npm run screen` 直接用 `tsx` 跑源码)。 |
 
-单次运行的产出(均写入 `output/`,前三个文件名带运行时间戳,互不覆盖):
+单次运行的产出按运行日期自动归档到 `output/runs/{YYYY-MM-DD}/`(同一天第二次及以后的运行加 `_HHMM` 后缀,如 `output/runs/2026-08-24_1409/`,互不覆盖):
 
 | 文件 | 内容 |
 |------|------|
-| `atlas_payload_<ts>.txt` | ATLAS PAYLOAD——candidate 全量证据(旗标/基本面/事件窗口/关键价位),贴入 Atlas Radar 用 |
-| `atlas_dissent_payload_<ts>.txt` | ATLAS DISSENT PAYLOAD——仅桶类型+模板化设想陈述,零旗标细节(隔离铁律),贴入 Atlas Red Team 用 |
-| `atlas_report_<ts>.html` | 自包含单文件 HTML 周报(浏览器直接打开,含 SVG sparkline) |
-| `screen_run_<ts>.json` | 完整结构化输出(`ScreenRunResult`——含全部旗标、耗时分解、失败标的归因等),供脚本化消费或调试用 |
-| `ledger.jsonl` | 前向结果账本(append-only,进 git 版本控制,宪法要求永久归档见下) |
-| `checkpoint.json` | 抓取阶段的本地缓存(gitignored,体积很大,删除会强制全量重抓——见故障排查) |
+| `output/runs/<date[_HHMM]>/ATLAS_PAYLOAD.txt` | ATLAS PAYLOAD——candidate 全量证据(旗标/基本面/事件窗口/关键价位),贴入 Atlas Radar 用 |
+| `output/runs/<date[_HHMM]>/ATLAS_DISSENT_PAYLOAD.txt` | ATLAS DISSENT PAYLOAD——仅桶类型+模板化设想陈述,零旗标细节(隔离铁律),贴入 Atlas Red Team 用 |
+| `output/runs/<date[_HHMM]>/report.html` | 自包含单文件 HTML 周报(浏览器直接打开,含 SVG sparkline) |
+| `output/runs/<date[_HHMM]>/screen_run.json` | 完整结构化输出(`ScreenRunResult`——含全部旗标、耗时分解、失败标的归因等),供脚本化消费或调试用 |
+| `output/runs/<date[_HHMM]>/brief.md`(手动) | 若跑了 Radar 环节,建议把辩护状原文存在这里,与同次运行的 PAYLOAD 并排对照 |
+| `output/runs/<date[_HHMM]>/dissent.md`(手动) | 若跑了 Red Team 环节,同理存这里 |
+| `output/latest.html` | 每次运行都会覆盖为最新一次的 `report.html` 副本——"看最新报告"永远是这一个固定路径,不用翻日期文件夹 |
+| `ledger.jsonl` | 前向结果账本(全局,不按日期拆分;append-only,进 git 版本控制,宪法要求永久归档见下) |
+| `checkpoint.json` | 抓取阶段的本地缓存(全局,不按日期拆分;gitignored,体积很大,删除会强制全量重抓——见故障排查) |
 
 ## Config 说明
 
@@ -108,7 +111,7 @@ copy .env.example .env
 
 **机构持仓趋势(institutionalTrend)长期显示"不可得"**——这是 Yahoo 无法提供多期趋势数据的已知限制,Atlas 靠比较本次运行快照与上次运行快照来推算趋势(`config/card04.json` 的 `institutionalTrend.minDaysBetweenSnapshots`,默认 60 天)。两次运行间隔不足 60 天时该字段必然是"不可得",不是抓取失败——见 `ai/decisions.md` TASK_CARD_04 条目。
 
-**想知道某次运行时间花在哪一步**——`screen_run_<ts>.json` 的 `runMeta.timingBreakdown` 按宇宙/抓取/检测/报告四类给出毫秒级分解(`detail` 字段有更细的分段耗时);命令行标准错误输出末尾也会打印一行汇总。哪个标的在哪个抓取阶段失败,看同一 `runMeta` 下的 `failureAttribution.bySymbol`。
+**想知道某次运行时间花在哪一步**——对应日期文件夹下 `screen_run.json` 的 `runMeta.timingBreakdown` 按宇宙/抓取/检测/报告四类给出毫秒级分解(`detail` 字段有更细的分段耗时);命令行标准错误输出末尾也会打印一行汇总。哪个标的在哪个抓取阶段失败,看同一 `runMeta` 下的 `failureAttribution.bySymbol`。
 
 **想验证账本真的没有被改写过**——`output/ledger.jsonl` 只会被追加,从不重写或删除(`src/ledger/ledger.ts` 只用 `appendFileSync`,可直接 grep 源码确认没有 `writeFileSync`/`truncateSync`/`unlinkSync`)。`git log --follow output/ledger.jsonl` 能看到这份文件在 git 历史里的每一次改动,任何一次如果不是纯新增行,就值得警惕。
 

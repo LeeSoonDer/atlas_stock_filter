@@ -43,7 +43,12 @@ externally-gated DONE-WHEN items).
 
 These files are a fixed reference point, not meant to be routinely
 overwritten. `npm run screen -- --profile both` generates fresh
-`output/atlas_payload_*.txt` / `output/atlas_dissent_payload_*.txt` files
-every run — those are the ones to actually use day-to-day. Only replace the
-files in this directory if you deliberately want to re-baseline the drift
-comparison (e.g., after an intentional PAYLOAD format change).
+`output/runs/<date>/ATLAS_PAYLOAD.txt` / `ATLAS_DISSENT_PAYLOAD.txt` files
+every run (see the main README's output-artifact table for the current
+naming scheme — it changed after this baseline was frozen, from flat
+`output/atlas_payload_<timestamp>.txt` files to a per-date
+`output/runs/<date>/` folder; the source run's original path cited above
+no longer exists under that name) — those fresh files are the ones to
+actually use day-to-day. Only replace the files in this directory if you
+deliberately want to re-baseline the drift comparison (e.g., after an
+intentional PAYLOAD format change).
