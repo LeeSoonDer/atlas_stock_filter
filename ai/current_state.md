@@ -187,14 +187,82 @@
   (correct - no prior folder for that date), output/latest.html
   verified byte-identical to that run's report.html via diff. npx tsc
   --noEmit clean, npm test 130/130 (126 prior + 4 new).
+- TASK_CARD_07 - "全板块扫描数据供给 + 双层候选 + 情报简报 HTML 报告"
+  (constitution/ATLAS_AMENDMENT_NO4_THEME_RADAR.md, Amendments 10-13).
+  DONE, 9 commits. NOTE: this real TASK_CARD_07.md is a DIFFERENT card
+  from the "CARD 07 - Next.js dashboard" idea named in
+  TASK_CARD_06_AND_ROADMAP.md's optional post-v1 roadmap - that
+  roadmap slot is effectively superseded/renumbered by this one; the
+  Next.js dashboard idea (if still wanted) would need a new card
+  number.
+  - Part A (src/screen/sector_scan/): computeSectorFlowScan ranks all
+    11 SPDR sectors by a NEW weekly-return metric (independent of
+    sectorStrength.ts's existing 1mo/3mo composite rank - see
+    ai/decisions.md for why these are deliberately two separate
+    systems), classifies flow_in/flow_out/flat via a config-driven
+    rank-threshold rule (config/card07.json). computeHotSectorDetail
+    covers 科技/软件 (direct Technology sector reuse), AI 基建 + 航天/
+    太空 (hand-curated ticker baskets, config/hot_sectors.json -
+    explicitly disclosed as an unverified approximation per the
+    card's own sanctioned "篮子近似" allowance, with real per-ticker
+    coverage disclosure, not fabricated precision), plus any real
+    sector flagged footprintAnomaly but not already named. Wired into
+    generateAtlasPayload with two new sections (全板块资金流谱,
+    热门领域详述), zero new network calls (reuses already-fetched
+    sector ETF bars + already-cached basket-ticker OHLCV).
+  - Part B: config/card05.json's select caps changed from 5/10 to 3/8
+    in place (not a new parallel config) - reuses CARD 05's
+    selectCandidates/selectWatchlist/promotion logic unchanged, per
+    the card's own "沿用 CARD 05 逻辑" instruction.
+  - Part C (src/report/html/): full rebuild of styles.ts/renderReport.ts
+    per MOCKUP_intel_briefing_v4.html's structure and visual style -
+    an explicit project-owner instruction that supersedes both the
+    card's own text reference to v3 AND TASK_CARD_05's earlier no-
+    gradient/purple fallback design (which only applied absent a
+    named reference - see ai/decisions.md). Dark-only "intel
+    briefing" theme, deliberate (matches the mockup's own genre-
+    appropriate single-theme design, not an oversight). New optional
+    `radarNarrative` field on ReportInput gates every prose/judgment
+    slot the mockup shows (market recap paragraph, per-sector
+    verdict, theme narrative, per-candidate desc/grade/probability/
+    confidence, excluded-item reasoning, weekly forecast) - absent on
+    every run so far (no Radar pass has happened), so all of these
+    render a literal "待研究层填充" placeholder, grep-verified never
+    app-synthesized. One sanctioned exception: footprint-anomaly
+    sectors render as an explicitly-unconfirmed "潜在主题雏形" seedling
+    card (facts only - density/count, no strength/lifecycle guess)
+    when Radar hasn't supplied real themes yet, per the card's own
+    "首版可先渲染板块异动作为主题雏形" allowance.
+  - Live-validated twice on real production data (a stale-module
+    timing gotcha on the first run meant its report.html reflected
+    pre-Part-C code even though it finished after Part C was
+    committed - Node doesn't hot-reload a running process; caught by
+    inspecting the raw `<style>` block, fixed by re-running once all
+    edits landed - see ai/decisions.md's operational note). The
+    corrected re-run (~32s on warm checkpoint) confirmed: 3 candidates
+    + 8 watchlist + 3 promoted (two-tier caps), sector flow scan with
+    all 11 sectors correctly rank/flow-classified (hand-verified the
+    rank-threshold logic against real numbers, e.g. rank 8 Energy at
+    -1.07% correctly stayed "flat" rather than "flow_out" since
+    rank 8 isn't > 11-3=8), 4 hot-sector entries (AI 基建 10/10 and
+    航天/太空 8/8 basket tickers found in this run's universe - full
+    coverage, not degraded), real report.html with all 7 new section
+    headers present, 15 placeholder occurrences and zero leaked
+    hardcoded judgment phrases (grep-verified against the actual
+    generated file, not just unit tests), DISSENT payload isolation
+    still holds (0 flag-term matches). npx tsc --noEmit clean, npm
+    test 152/152 (143 prior + 17 rewritten renderReport tests + fixes
+    to pre-existing sector/regime tests for the new oneWeekReturn
+    field).
+  - Independent verification not yet dispatched as of this write.
 
 ## In Progress
-- Nothing active. Awaiting the project owner's next instruction (v1.0
-  is complete and pushed; post-v1 roadmap cards are all optional and
-  trigger-condition-gated - see Next Priorities).
+- Independent verification of TASK_CARD_07 about to be dispatched.
 
 ## Next Priorities
-1. User should, at their own convenience, open a generated
+1. Review TASK_CARD_07's independent verification report once it
+   returns.
+2. User should, at their own convenience, open a generated
    output/runs/<date>/report.html (or output/latest.html for the
    newest one) in a real browser and paste an
    output/runs/<date>/ATLAS_PAYLOAD.txt into Atlas Radar at least once
@@ -202,25 +270,31 @@
    CARD_06 since SCOPE 1 was accepted-empty) remain open. Any friction
    that surfaces from finally doing this should be logged as a normal
    decisions.md entry / follow-up fix, not treated as reopening a card.
-2. Undecided: full per-symbol OHLCV bars still live only in
+3. Once a real Radar pass happens, its narrative output needs to be
+   threaded into pipeline.ts's renderReport() call as a
+   `radarNarrative` object - currently nothing populates this field;
+   parsing a real Radar response into that shape is unbuilt future
+   work (see ai/decisions.md's TASK_CARD_07 Part C entry).
+4. Undecided: full per-symbol OHLCV bars still live only in
    output/checkpoint.json (now includes insider/institutional data too,
    very large), gitignored - a future card should decide their permanent
    storage/access pattern.
-3. If the user ever wants FMP's PEG/P-E/P-B cross-check live, set
+5. If the user ever wants FMP's PEG/P-E/P-B cross-check live, set
    FMP_API_KEY in .env (see .env.example) - no code change needed, but
    the first live run's response shape should be spot-checked against
    the WebSearch-verified (not live-verified) field names in
    src/data/enrich/computeFmpEnrichment.ts.
-4. Post-v1 roadmap (all optional, none required for v1, none should be
+6. If the AI 基建/航天太空 hot-sector baskets in config/hot_sectors.json
+   ever show consistently low coverage (many tickers not found in the
+   gate-passed universe across repeated runs), revisit the basket
+   composition - see ai/decisions.md's disclosure entry.
+7. Post-v1 roadmap (all optional, none required, none should be
    started without the project owner explicitly requesting that
-   specific card - see cards/TASK_CARD_06_AND_ROADMAP.md for each
-   one's stated trigger condition):
+   specific card - see cards/TASK_CARD_06_AND_ROADMAP.md; note the
+   "CARD 07" slot there is stale/superseded, see above):
    - CARD 04b - EDGAR 13F incremental parsing. Trigger: institutional
      bucket proves its value in the forward ledger AND Form 4 proxy
      proves insufficient.
-   - CARD 07 - Next.js dashboard (reuses Cockpit's P4_DESIGN_SPEC).
-     Trigger: after 1-2 months of using the HTML report, user wants an
-     interactive UI.
    - CARD 08 - MCP thin proxy (build_atlas_payload/save_brief/
      save_dissent tools). Trigger: manual copy-paste friction starts
      causing the user to skip the red-team step.
