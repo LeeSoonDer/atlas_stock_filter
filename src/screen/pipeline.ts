@@ -671,6 +671,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length },
     marketRegime,
     sectorFootprints,
+    sectorFlowScan,
+    hotSectorDetail,
     candidates: htmlCandidates,
     watchlist: watchlistForHtml,
     promotedThisRun,
