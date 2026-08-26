@@ -189,7 +189,8 @@
   --noEmit clean, npm test 130/130 (126 prior + 4 new).
 - TASK_CARD_07 - "全板块扫描数据供给 + 双层候选 + 情报简报 HTML 报告"
   (constitution/ATLAS_AMENDMENT_NO4_THEME_RADAR.md, Amendments 10-13).
-  DONE, 9 commits. NOTE: this real TASK_CARD_07.md is a DIFFERENT card
+  DONE, 7 commits (one, 208fdaa, is mislabeled - see ai/decisions.md's
+  correction entry). NOTE: this real TASK_CARD_07.md is a DIFFERENT card
   from the "CARD 07 - Next.js dashboard" idea named in
   TASK_CARD_06_AND_ROADMAP.md's optional post-v1 roadmap - that
   roadmap slot is effectively superseded/renumbered by this one; the
@@ -254,15 +255,29 @@
     test 152/152 (143 prior + 17 rewritten renderReport tests + fixes
     to pre-existing sector/regime tests for the new oneWeekReturn
     field).
-  - Independent verification not yet dispatched as of this write.
+  - Independent verification: returned CONFIRMED on every DONE-WHEN
+    item and MUST-NOT constraint via its own from-scratch re-derivation
+    (its own live `npm run screen` run, its own reads of the actual
+    renderReport.ts logic, its own greps of fresh output for leaked
+    judgment phrases, its own tsc/test runs, its own byte-for-byte
+    latest.html comparison). It also caught a real, disclosed problem:
+    the claimed "9 commits" was wrong (actually 7), and commit 208fdaa
+    is mislabeled - its message says "docs: add TASK_CARD_07..." but
+    its actual diff bundles in the full Part A/B implementation code
+    too (a consequence of the git-add staging mistake already disclosed
+    earlier in this session - not a new problem, but the verifier
+    correctly caught that the count/description hadn't been corrected
+    to match). Fixed: commit count corrected above; see
+    ai/decisions.md's correction entry for the full explanation. Not
+    amending 208fdaa itself, per this project's "prefer new commit over
+    amend" convention - the actual code content was already functionally
+    verified as correct.
 
 ## In Progress
-- Independent verification of TASK_CARD_07 about to be dispatched.
+- Nothing active. Awaiting the project owner's next instruction.
 
 ## Next Priorities
-1. Review TASK_CARD_07's independent verification report once it
-   returns.
-2. User should, at their own convenience, open a generated
+1. User should, at their own convenience, open a generated
    output/runs/<date>/report.html (or output/latest.html for the
    newest one) in a real browser and paste an
    output/runs/<date>/ATLAS_PAYLOAD.txt into Atlas Radar at least once
@@ -270,25 +285,25 @@
    CARD_06 since SCOPE 1 was accepted-empty) remain open. Any friction
    that surfaces from finally doing this should be logged as a normal
    decisions.md entry / follow-up fix, not treated as reopening a card.
-3. Once a real Radar pass happens, its narrative output needs to be
+2. Once a real Radar pass happens, its narrative output needs to be
    threaded into pipeline.ts's renderReport() call as a
    `radarNarrative` object - currently nothing populates this field;
    parsing a real Radar response into that shape is unbuilt future
    work (see ai/decisions.md's TASK_CARD_07 Part C entry).
-4. Undecided: full per-symbol OHLCV bars still live only in
+3. Undecided: full per-symbol OHLCV bars still live only in
    output/checkpoint.json (now includes insider/institutional data too,
    very large), gitignored - a future card should decide their permanent
    storage/access pattern.
-5. If the user ever wants FMP's PEG/P-E/P-B cross-check live, set
+4. If the user ever wants FMP's PEG/P-E/P-B cross-check live, set
    FMP_API_KEY in .env (see .env.example) - no code change needed, but
    the first live run's response shape should be spot-checked against
    the WebSearch-verified (not live-verified) field names in
    src/data/enrich/computeFmpEnrichment.ts.
-6. If the AI 基建/航天太空 hot-sector baskets in config/hot_sectors.json
+5. If the AI 基建/航天太空 hot-sector baskets in config/hot_sectors.json
    ever show consistently low coverage (many tickers not found in the
    gate-passed universe across repeated runs), revisit the basket
    composition - see ai/decisions.md's disclosure entry.
-7. Post-v1 roadmap (all optional, none required, none should be
+6. Post-v1 roadmap (all optional, none required, none should be
    started without the project owner explicitly requesting that
    specific card - see cards/TASK_CARD_06_AND_ROADMAP.md; note the
    "CARD 07" slot there is stale/superseded, see above):
