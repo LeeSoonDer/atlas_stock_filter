@@ -1,7 +1,7 @@
 {
   "select": {
-    "maxCandidates": 5,
-    "maxWatchlist": 10
+    "maxCandidates": 3,
+    "maxWatchlist": 8
   },
   "fmp": {
     "priceMismatchThresholdPercent": 2

@@ -24,6 +24,8 @@ export type TailwindHeadwind = "tailwind" | "neutral" | "headwind";
 export interface SectorReturns {
   sector: string;
   etf: string;
+  /** TASK_CARD_07 Part A: added for the weekly sector flow scan - not used by rankSectors' composite rank (1mo/3mo only, unchanged). */
+  oneWeekReturn: number | null;
   oneMonthReturn: number | null;
   threeMonthReturn: number | null;
 }
@@ -36,6 +38,7 @@ export interface SectorRanking extends SectorReturns {
 
 export interface SectorConfig {
   sector: {
+    oneWeekTradingDays: number;
     oneMonthTradingDays: number;
     threeMonthTradingDays: number;
     tailwindRankCount: number;

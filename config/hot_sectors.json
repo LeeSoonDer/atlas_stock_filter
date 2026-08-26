@@ -1,0 +1,16 @@
+{
+  "_comment": "TASK_CARD_07 Part A. '科技/软件' maps directly onto the real, ETF-tracked Technology SPDR sector (kind: sector) - no approximation needed. 'AI 基建' and '航天/太空' have no single tracking sector, so they use a hand-curated ticker basket (kind: basket) per the card's own explicitly-sanctioned '篮子近似' allowance. These basket ticker lists are a manually-assembled, illustrative approximation - NOT a verified or official sector/industry classification, and membership has not been individually re-verified live the way every other data source in this repo has been. Coverage against the actual gate-passed universe (some basket tickers may not pass the STANDARD/SMALL_SPEC profile gate, may be delisted, or may not exist) is computed and disclosed at runtime rather than assumed - see src/screen/sector_scan/computeHotSectorDetail.ts.",
+  "hotSectors": [
+    { "name": "科技/软件", "kind": "sector", "sector": "Technology" },
+    {
+      "name": "AI 基建",
+      "kind": "basket",
+      "tickers": ["NVDA", "AMD", "AVGO", "SMCI", "VRT", "ANET", "MRVL", "MU", "DELL", "TSM"]
+    },
+    {
+      "name": "航天/太空",
+      "kind": "basket",
+      "tickers": ["RKLB", "ASTS", "LUNR", "RDW", "KTOS", "LMT", "NOC", "PL"]
+    }
+  ]
+}

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ATLAS — Weekly Intel Briefing v3 (Final Mockup)</title>
+<style>
+  :root{
+    --bg:#0a0e14;--panel:#111720;--panel2:#161d28;--line:#1f2937;
+    --ink:#e6edf3;--dim:#8b98a9;--faint:#5a6675;
+    --gold:#e0b341;--green:#3fb98a;--red:#e5484d;--blue:#4a90d9;
+    --violet:#8b7cf0;--amber:#e0913b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;line-height:1.5;padding:32px 20px 80px}
+  .wrap{max-width:940px;margin:0 auto}
+  .masthead{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--line);padding-bottom:16px}
+  .brand{font-size:26px;font-weight:800;letter-spacing:3px}.brand span{color:var(--gold)}
+  .meta{text-align:right;font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}.meta b{color:var(--ink)}
+
+  .market{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:22px 0 10px}
+  .market-h{font-size:11px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin-bottom:14px}
+  .market-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .mstat{background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:8px;padding:11px 13px}
+  .mstat .k{font-size:10px;color:var(--faint);letter-spacing:.5px;text-transform:uppercase}
+  .mstat .v{font-size:17px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+  .mstat .s{font-size:11px;margin-top:2px}
+  .up{color:var(--green)}.down{color:var(--red)}.neu{color:var(--dim)}
+  .market p{font-size:13.5px;line-height:1.7;margin-top:4px}
+  .anchor{color:var(--blue);border-bottom:1px dotted rgba(74,144,217,.5);cursor:help}
+
+  .seclabel{font-size:11px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;margin:30px 0 12px;display:flex;align-items:center;gap:10px}
+  .seclabel::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* HOT SECTOR SCAN (NEW) */
+  .sectors{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  .sec{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px;position:relative}
+  .sec.flow-in{border-left:3px solid var(--green)}
+  .sec.flow-out{border-left:3px solid var(--red)}
+  .sec.flow-flat{border-left:3px solid var(--faint)}
+  .sec-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+  .sec-name{font-size:14px;font-weight:700}
+  .sec-rank{font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .flowtag{font-size:10px;padding:3px 9px;border-radius:5px;letter-spacing:.5px;font-weight:600}
+  .flowtag.in{background:rgba(63,185,138,.14);color:var(--green)}
+  .flowtag.out{background:rgba(229,72,77,.12);color:var(--red)}
+  .flowtag.flat{background:rgba(90,102,117,.15);color:var(--dim)}
+  .sec-data{display:flex;gap:14px;font-size:11px;color:var(--dim);margin-bottom:9px;font-variant-numeric:tabular-nums}
+  .sec-data b{color:var(--ink)}
+  .sec-verdict{font-size:12.5px;line-height:1.6;color:var(--ink)}
+  .sec-verdict .hl{color:var(--gold)}
+  .sec-inpool{font-size:10px;color:var(--blue);margin-top:8px;font-family:'Consolas',monospace}
+  .sec-nopool{font-size:10px;color:var(--faint);margin-top:8px}
+
+  .theme{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--line);border-left:3px solid var(--violet);border-radius:12px;padding:22px 24px;margin-bottom:18px;position:relative;overflow:hidden}
+  .theme::before{content:"";position:absolute;top:-40px;right:-40px;width:160px;height:160px;background:radial-gradient(circle,rgba(139,124,240,.12),transparent 70%)}
+  .theme-tag{font-size:10px;letter-spacing:1.5px;color:var(--violet);text-transform:uppercase;margin-bottom:6px;font-weight:600;position:relative}
+  .theme-name{font-size:19px;font-weight:700;position:relative}
+  .strength{display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;margin-left:10px;vertical-align:middle}
+  .strength.mid{background:rgba(224,145,59,.15);color:var(--amber)}
+  .cycle{margin:16px 0}.cycle-track{display:flex;gap:4px}
+  .cycle-seg{flex:1;height:6px;border-radius:3px;background:var(--line)}.cycle-seg.on{background:var(--violet)}
+  .cycle-labels{display:flex;justify-content:space-between;margin-top:7px;font-size:10px;color:var(--faint)}
+  .cycle-labels .active{color:var(--violet);font-weight:700}
+  .footprints{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .fp{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:7px;padding:8px 12px;font-size:12px;color:var(--dim);display:flex;gap:8px;align-items:center}
+  .fp b{color:var(--ink)}.fp .ic{color:var(--green)}
+  .members{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .tik{font-family:'Consolas',monospace;font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 9px;color:var(--blue);font-weight:600}
+  .verdict{background:rgba(224,179,65,.06);border:1px solid rgba(224,179,65,.25);border-radius:9px;padding:15px 17px;margin-top:16px}
+  .verdict-h{font-size:10px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:8px}
+  .verdict p{font-size:14px;line-height:1.7}
+  .anchor-g{color:var(--gold);border-bottom:1px dotted rgba(224,179,65,.5);cursor:help}
+
+  .cand{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:11px;display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center}
+  .grade{font-size:22px;font-weight:800;width:52px;height:52px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Consolas',monospace}
+  .g-b{background:rgba(63,185,138,.12);color:var(--green);border:1px solid rgba(63,185,138,.3)}
+  .cand-mid .tk{font-family:'Consolas',monospace;font-size:16px;font-weight:700}
+  .cand-mid .nm{font-size:12px;color:var(--dim);margin-left:8px}
+  .cand-mid .desc{font-size:12.5px;color:var(--dim);margin-top:5px;line-height:1.6}
+  .badges{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
+  .bdg{font-size:10px;padding:3px 8px;border-radius:5px;letter-spacing:.5px}
+  .bdg.bucket{background:rgba(139,124,240,.12);color:var(--violet)}
+  .bdg.event{background:rgba(224,145,59,.12);color:var(--amber)}
+  .bdg.sector{background:rgba(74,144,217,.12);color:var(--blue)}
+  .cand-right{text-align:right;font-size:11px;color:var(--faint);min-width:110px}
+  .scorebar{display:flex;gap:3px;margin-top:5px;justify-content:flex-end}
+  .scorebar i{width:14px;height:4px;border-radius:2px;background:var(--line)}.scorebar i.on{background:var(--green)}
+  .prob{font-size:19px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+  .prob small{font-size:11px;color:var(--faint);font-weight:400}
+  .watch{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .wrow{display:grid;grid-template-columns:auto auto 1fr auto;gap:14px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line);font-size:13px}
+  .wrow:last-child{border-bottom:none}
+  .wrow .wtk{font-family:'Consolas',monospace;font-weight:700;color:var(--blue)}
+  .wrow .wbucket{font-size:10px;color:var(--violet)}.wrow .wdesc{color:var(--dim);font-size:12px}
+  .wrow .wtrig{font-size:11px;color:var(--faint);text-align:right}
+  .promo{color:var(--green);font-size:10px;font-weight:700}
+  .excl-note{font-size:12px;color:var(--faint);background:var(--panel);border:1px dashed var(--line);border-radius:8px;padding:11px 15px;margin-bottom:11px}
+  .excl-note b{color:var(--red)}
+  .forecast{background:linear-gradient(160deg,rgba(139,124,240,.08),var(--panel));border:1px solid rgba(139,124,240,.3);border-radius:12px;padding:24px 26px;margin-top:26px}
+  .forecast-h{font-size:11px;letter-spacing:2px;color:var(--violet);text-transform:uppercase;margin-bottom:14px}
+  .forecast p{font-size:14.5px;line-height:1.8;margin-bottom:12px}
+  .forecast .lead{font-size:16.5px;font-weight:600}
+  .forecast .sub{font-size:11px;letter-spacing:1px;color:var(--violet);text-transform:uppercase;margin:18px 0 8px;font-weight:600}
+  .watchitems{list-style:none}
+  .watchitems li{font-size:13.5px;line-height:1.7;padding:7px 0 7px 24px;position:relative}
+  .watchitems li::before{content:"→";position:absolute;left:0;color:var(--violet);font-weight:700}
+  .disc{font-size:11px;color:var(--faint);margin-top:16px;padding-top:12px;border-top:1px solid var(--line);line-height:1.6}
+  .flowline{display:grid;grid-template-columns:auto 1fr auto auto auto;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);font-size:12.5px;font-variant-numeric:tabular-nums}
+  .flowline:last-child{border-bottom:none}
+  .flowline .fr{font-family:'Consolas',monospace;color:var(--faint);font-size:11px;width:16px}
+  .flowline .fn{font-weight:600}
+  .flowline .star{font-size:9px;color:var(--violet);margin-left:6px}
+  .flowline .fp{text-align:right;font-weight:600}
+  .flowline .fd{text-align:right;color:var(--dim);font-size:11px}
+  .flowline .fd.hot{color:var(--violet);font-weight:700}
+  .flowline .ff{text-align:right;font-size:10px;padding:2px 8px;border-radius:4px;min-width:44px;font-weight:600}
+  .flowline .ff.in{background:rgba(63,185,138,.14);color:var(--green)}
+  .flowline .ff.out{background:rgba(229,72,77,.12);color:var(--red)}
+  .flowline .ff.flat{background:rgba(90,102,117,.13);color:var(--dim)}
+  .flowline[data-f="in"]{border-left:2px solid var(--green)}
+  .flowline[data-f="out"]{border-left:2px solid var(--red)}
+  .flowline[data-f="flat"]{border-left:2px solid transparent}
+  .footer{text-align:center;font-size:11px;color:var(--faint);margin-top:40px;letter-spacing:1px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="brand">ATLAS<span>·</span>RADAR</div>
+    <div class="meta">WEEKLY INTEL BRIEFING<br><b>2026-08-25</b> · 08:11 UTC · universe <b>3,350</b></div>
+  </div>
+
+  <div class="market">
+    <div class="market-h">◆ 大盘环境复盘 · 只描述现在,不预报未来</div>
+    <div class="market-grid">
+      <div class="mstat"><div class="k">SPY vs 200线</div><div class="v up">上方</div><div class="s up">↑ 斜率向上</div></div>
+      <div class="mstat"><div class="k">VIX</div><div class="v">15.8</div><div class="s neu">低波动 · 平静</div></div>
+      <div class="mstat"><div class="k">领涨</div><div class="v" style="font-size:14px">Healthcare</div><div class="s up">rank 1</div></div>
+      <div class="mstat"><div class="k">领跌</div><div class="v" style="font-size:14px">Technology</div><div class="s down">rank 9</div></div>
+    </div>
+    <p>大盘<span class="anchor">站上200日线且斜率向上</span>、<span class="anchor">VIX 15.8低位</span>——风险偏好开着的环境。核心信号:<span class="anchor">资金在从Technology(垫底)往Healthcare(领涨)轮动</span>。这解释了本周候选为何偏防御/价值而非科技热门。</p>
+  </div>
+
+  <!-- ===== FULL SECTOR FLOW SPECTRUM (all 11) ===== -->
+  <div class="seclabel">全板块资金流谱 · 11板块一览(按rank)</div>
+  <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:12px;padding:9px 16px;border-bottom:1px solid var(--line);font-size:10px;color:var(--faint);letter-spacing:.5px;text-transform:uppercase">
+      <span>rank</span><span>板块</span><span style="text-align:right">周涨跌</span><span style="text-align:right">挤压密度</span><span style="text-align:right;min-width:70px">资金流向</span>
+    </div>
+    <div class="flowline" data-f="in"><span class="fr">1</span><span class="fn">Healthcare 医疗</span><span class="fp up">+2.3%</span><span class="fd">8.1%</span><span class="ff in">流入</span></div>
+    <div class="flowline" data-f="in"><span class="fr">2</span><span class="fn">Utilities 公用</span><span class="fp up">+1.7%</span><span class="fd">6.4%</span><span class="ff in">流入</span></div>
+    <div class="flowline" data-f="in"><span class="fr">3</span><span class="fn">Consumer Staples 必需消费</span><span class="fp up">+1.5%</span><span class="fd">5.9%</span><span class="ff in">流入</span></div>
+    <div class="flowline" data-f="in"><span class="fr">4</span><span class="fn">Financials 金融 <span class="star">★异动</span></span><span class="fp up">+1.4%</span><span class="fd hot">23.2%</span><span class="ff in">流入</span></div>
+    <div class="flowline" data-f="flat"><span class="fr">5</span><span class="fn">Industrials 工业</span><span class="fp neu">+0.6%</span><span class="fd">7.2%</span><span class="ff flat">横盘</span></div>
+    <div class="flowline" data-f="flat"><span class="fr">6</span><span class="fn">Energy 能源</span><span class="fp neu">+0.4%</span><span class="fd">9.8%</span><span class="ff flat">横盘</span></div>
+    <div class="flowline" data-f="flat"><span class="fr">7</span><span class="fn">Materials 材料</span><span class="fp neu">+0.2%</span><span class="fd">6.7%</span><span class="ff flat">横盘</span></div>
+    <div class="flowline" data-f="flat"><span class="fr">8</span><span class="fn">Real Estate 地产</span><span class="fp neu">-0.3%</span><span class="fd">5.1%</span><span class="ff flat">横盘</span></div>
+    <div class="flowline" data-f="flat"><span class="fr">9</span><span class="fn">Consumer Disc. 可选消费</span><span class="fp neu">-0.5%</span><span class="fd">6.0%</span><span class="ff flat">横盘</span></div>
+    <div class="flowline" data-f="out"><span class="fr">10</span><span class="fn">Communication 通信</span><span class="fp down">-1.4%</span><span class="fd">4.8%</span><span class="ff out">流出</span></div>
+    <div class="flowline" data-f="out"><span class="fr">11</span><span class="fn">Technology 科技</span><span class="fp down">-2.1%</span><span class="fd">4.2%</span><span class="ff out">流出</span></div>
+  </div>
+  <div style="font-size:11px;color:var(--faint);margin:-8px 0 18px;padding:0 4px">一眼看完全市场:钱在<b style="color:var(--green)">医疗/公用/必需消费/金融</b>(防御+价值),从<b style="color:var(--red)">科技/通信</b>(成长)撤出。典型的risk rotation。下方对你点名的热门领域详述。</div>
+
+  <!-- ===== HOT SECTOR DETAIL (named ones) ===== -->
+  <div class="seclabel">热门领域详述 · 你点名的 + 本周异动(数据说话,不吹虚火)</div>
+  <div class="sectors">
+
+    <div class="sec flow-out">
+      <div class="sec-top"><span class="sec-name">科技 / 软件</span><span class="flowtag out">资金流出</span></div>
+      <div class="sec-data"><span>板块 rank <b>9/11</b></span><span>周涨跌 <b class="down">−2.1%</b></span><span>挤压密度 <b>低</b></span></div>
+      <div class="sec-verdict">本周垫底,钱在流出。但属<span class="hl">轮动性流出</span>(往医疗金融),非崩盘。个股分化:强者仍强。</div>
+      <div class="sec-inpool">◆ 进候选池:NAVN(板块内相对领导者,个股强板块弱)</div>
+    </div>
+
+    <div class="sec flow-flat">
+      <div class="sec-top"><span class="sec-name">AI 基建</span><span class="flowtag flat">横盘无动</span></div>
+      <div class="sec-data"><span>板块 rank <b>6/11</b></span><span>周涨跌 <b class="neu">+0.3%</b></span><span>挤压密度 <b>阈值下</b></span></div>
+      <div class="sec-verdict">本周<span class="hl">无个股进入候选池</span>,挤压密度低于阈值。热度停留在叙事层,资金没跟上——嘴上热,数据没动。</div>
+      <div class="sec-nopool">○ 无候选 · 无观察哨 · 本周数据级别无异动</div>
+    </div>
+
+    <div class="sec flow-flat">
+      <div class="sec-top"><span class="sec-name">航天 / 太空</span><span class="flowtag flat">横盘无动</span></div>
+      <div class="sec-data"><span>细分主题</span><span>周涨跌 <b class="neu">+0.8%</b></span><span>挤压密度 <b>不足</b></span></div>
+      <div class="sec-verdict">主题级追踪。本周<span class="hl">无足迹异动</span>,无票达候选阈值。属长线叙事,当前无资金层面证据支撑短中期机会。</div>
+      <div class="sec-nopool">○ 无候选 · 诚实定位:这周它没动</div>
+    </div>
+
+    <div class="sec flow-in">
+      <div class="sec-top"><span class="sec-name">金融 / 区域银行</span><span class="flowtag in">资金流入</span></div>
+      <div class="sec-data"><span>板块 rank <b>4/11</b></span><span>周涨跌 <b class="up">+1.4%</b></span><span>挤压密度 <b class="up">23.2%</b></span></div>
+      <div class="sec-verdict">本周<span class="hl">唯一足迹异动板块</span>。129只同时挤压,资金在悄悄进。详见下方主题雷达。</div>
+      <div class="sec-inpool">◆ 进候选池:WSBC + 5只观察哨</div>
+    </div>
+
+  </div>
+  <div style="font-size:11px;color:var(--faint);margin-top:9px;padding:0 4px;line-height:1.6">
+    扫描口径:板块排名与涨跌来自本周板块ETF数据(可查证);挤压密度来自本周全宇宙检测;催化来自Radar本周实时检索。<b style="color:var(--dim)">最有价值的往往是"大家以为热、数据却没动"——AI基建与太空本周正是如此。</b>
+  </div>
+
+  <!-- theme -->
+  <div class="seclabel">萌芽主题雷达 · Emerging Theme(激进档 · 苗头即报)</div>
+  <div class="theme">
+    <div class="theme-tag">◆ THEME · 足迹拼图,非预言</div>
+    <div class="theme-name">区域银行 NIM 修复蓄势<span class="strength mid">足迹强度 中</span></div>
+    <div class="cycle"><div class="cycle-track"><div class="cycle-seg on"></div><div class="cycle-seg on"></div><div class="cycle-seg"></div><div class="cycle-seg"></div></div>
+      <div class="cycle-labels"><span>萌芽</span><span class="active">发酵 ◄ 当前</span><span>爆发</span><span>衰竭</span></div></div>
+    <div class="footprints">
+      <div class="fp"><span class="ic">▲</span> 板块挤压密度 <b>23.2%</b> <span style="color:var(--faint)">(555中129只)</span></div>
+      <div class="fp"><span class="ic">▲</span> WSBC 指数纳入被动买盘 <b>确认</b></div>
+      <div class="fp"><span class="ic">▲</span> NIM 连续扩张 <b>+6bp QoQ</b></div>
+      <div class="fp"><span class="ic">▲</span> 空头温和回补 <b>−5.7%</b></div>
+    </div>
+    <div style="font-size:11px;color:var(--faint);margin-bottom:4px">集群成员</div>
+    <div class="members"><span class="tik">WSBC</span><span class="tik">+128 只同板块挤压</span></div>
+    <div class="verdict"><div class="verdict-h">◆ 白话判断 · 每句锚定上方足迹</div>
+      <p>Financial Services 里<span class="anchor-g">129只同时挤压</span>,密度不正常。叠加 WSBC <span class="anchor-g">刚进指数、NIM在扩、空头在撤</span>,像有资金埋伏区域银行,押的很可能是<span class="anchor-g">利率曲线变陡下的息差修复</span>。<b>发酵期,大众还没炒。</b>强度只标"中"——激进档才报,别梭哈。盯:更多同板块票挤压/龙头放量=坐实;曲线走平预期回来=拼图散。</p>
+    </div>
+  </div>
+
+  <div class="seclabel">第一层 · 值得研究(深讲)</div>
+  <div class="cand">
+    <div class="grade g-b">B−</div>
+    <div class="cand-mid"><span class="tk">WSBC</span><span class="nm">WesBanco · 区域银行</span>
+      <div class="desc">上升趋势内真实挤压回调,且是上方板块主题核心成员。基本面扎实:NIM连三季扩张、贷款年化+8.3%、刚进S&P SmallCap 600带被动买盘。技术偏软:跌破SMA20,需收复41.84确认。一个"基本面就位、等技术点头"的埋伏。风险:PFC收购遗留内控缺陷,深研必查。</div>
+      <div class="badges"><span class="bdg bucket">挤压蓄势</span><span class="bdg sector">板块足迹同向</span><span class="bdg event">⚡ 财报 10-21</span></div></div>
+    <div class="cand-right">概率 <span class="prob">53<small>/100</small></span><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><div style="margin-top:6px">确信 66 · 风险中</div></div>
+  </div>
+  <div class="cand">
+    <div class="grade g-b">B−</div>
+    <div class="cand-mid"><span class="tk">NAVN</span><span class="nm">Navan · AI差旅费控</span>
+      <div class="desc">2025底IPO成长股,处"兑现vs减速质疑"博弈。多头:上季营收超预期、首现盈利与FCF转正、拿下Insight/Evotec、AI分发叙事。空头:证券集体诉讼指控IPO隐瞒营收减速。非真挤压,是高波动动能股高位收敛。16天后财报是生死点。也是科技板块本周唯一进候选池的相对强者。</div>
+      <div class="badges"><span class="bdg bucket">动能延续</span><span class="bdg event">⚡ 财报 09-10 · 16天</span></div></div>
+    <div class="cand-right">概率 <span class="prob">55<small>/100</small></span><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div><div style="margin-top:6px">确信 57 · 风险高</div></div>
+  </div>
+
+  <div class="seclabel">第二层 · 观察哨(浅列 · 苗头对了自动升级)</div>
+  <div class="watch">
+    <div class="wrow"><span class="wtk">RGNL</span><span class="wbucket">挤压蓄势</span><span class="wdesc">区域银行主题成员,挤压中,流动性略薄</span><span class="wtrig">触发:放量破22.40</span></div>
+    <div class="wrow"><span class="wtk">CFFN</span><span class="wbucket">挤压蓄势</span><span class="wdesc">同主题,储蓄机构,基本面待验</span><span class="wtrig">触发:量比>1.8</span></div>
+    <div class="wrow"><span class="wtk">BANF</span><span class="wbucket">机构蓄势</span><span class="wdesc">内部人近30日2笔买入,持仓趋势升</span><span class="wtrig">触发:第3笔Form4</span></div>
+    <div class="wrow"><span class="wtk">PLAB</span><span class="wbucket">超卖反转</span><span class="wdesc"><span class="promo">▲已升级</span> 上周观察哨,本周OBV转正</span><span class="wtrig">已进候选池</span></div>
+    <div class="wrow"><span class="wtk">HLNE</span><span class="wbucket">动能延续</span><span class="wdesc">资管股,近52周高,量能待确认</span><span class="wtrig">触发:突破前高</span></div>
+  </div>
+
+  <div class="excl-note" style="margin-top:11px"><b>3只已排除(E级)</b> — APGE·ALOT·SLP 均为<b style="color:var(--amber)">已签署全现金并购标的</b>,股价钉死收购对价,挤压检测器误判。重定价已被现金封顶。<span style="color:var(--dim)">点击展开看完整理由。</span></div>
+
+  <div class="forecast">
+    <div class="forecast-h">◆ 本周总结与前瞻 · 戴镣铐的白话</div>
+    <p class="lead">这周的故事是板块轮动,和一条正在成形的银行线。</p>
+    <p>先说大环境:大盘健康,风险偏好开着,但钱正明显从科技往医疗、金融轮动。<b>这不是我预测的,是板块排名摆在那。</b>热门板块扫描把话说透了——科技软件在流出(轮动非崩盘),而你最关心的AI和太空这周其实<b>没动</b>,热度只停在嘴上,资金没跟。这正是伪量化的价值:不管社交媒体多热闹,数据没异动就是没异动。</p>
+    <p><b>这周真正的发现是区域银行。</b>129只同板块票一起挤压,大概率有资金下注但还没喊。WSBC是里面最干净的,基本面就位、等技术点头。要"早一步",这就是本周离你最近的那一步:不追已涨完的,蹲一个刚发酵、大众没反应的板块。但强度只标"中",激进档捞出来的,值得盯不值得梭哈。</p>
+    <p>NAVN是另一类——赌财报。16天后交卷,直接裁决"减速指控"真假。想在事件驱动上博弈可以看,但诉讼是悬着的刀,风险高。</p>
+    <p>三个并购股被系统拦掉了——它们被收购价钉死,散户碰了就接盘。这种拦截不产生买入建议,但本身就是在为你省钱。</p>
+    <div class="sub">◆ 下周三个关注点</div>
+    <ul class="watchitems">
+      <li><b>区域银行是否扩散</b>:若龙头放量突破或更多同板块票加入挤压,"NIM修复"从苗头变趋势,强度会升到"强"。</li>
+      <li><b>WSBC能否收复41.84</b>:从"基本面就位"到"技术确认"的门槛。收复=埋伏可考虑;跌破39.90=向下解决,放弃。</li>
+      <li><b>NAVN财报(9-10)</b>:营收增速是唯一支点。减速/下调=坐实诉讼,故事崩;加速=成长溢价站得住。</li>
+    </ul>
+    <div class="disc">每句均锚定上方真实足迹或可查证的板块/价格数据,无无支撑预言。大盘与热门板块部分只描述当前状态,不预报走向;"这周没动"是诚实的合法输出。"值得注意"≠"建议买入";介入、仓位、执行属于你的领地。主题为激进档拼图式早期识别,足迹强度已标注,非涨跌承诺。</div>
+  </div>
+
+  <div class="footer">ATLAS RADAR · FINAL MOCKUP v4 · 全板块 · 真实数据 2026-08-25 · 大盘复盘 + 热门板块扫描 + 主题雷达 + 双层候选 + 长白话</div>
+
+</div>
+</body>
+</html>

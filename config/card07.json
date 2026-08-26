@@ -1,0 +1,6 @@
+{
+  "sectorFlow": {
+    "flowInRankThreshold": 4,
+    "flowOutRankThreshold": 3
+  }
+}

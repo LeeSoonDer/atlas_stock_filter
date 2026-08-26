@@ -6,6 +6,7 @@
     "earningsSoonWindowDays": 14
   },
   "sector": {
+    "oneWeekTradingDays": 5,
     "oneMonthTradingDays": 21,
     "threeMonthTradingDays": 63,
     "tailwindRankCount": 3,

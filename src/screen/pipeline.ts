@@ -113,7 +113,7 @@ const combinedDetectorsConfig: DetectorsConfig = {
  * redo every run) and assembles the sector rankings + market regime
  * snapshot. Computed once per run, independent of --profile.
  */
-async function fetchMarketContext(): Promise<{ sectorRankings: SectorRanking[]; marketRegime: MarketRegimeSnapshot }> {
+async function fetchMarketContext(): Promise<{ sectorRankings: SectorRanking[]; marketRegime: MarketRegimeSnapshot; sectorReturns: SectorReturns[] }> {
   const lb = card03Config.dataLookback;
   const [spyBars, vixBars, ...etfBarsList] = await Promise.all([
     fetchChartBars("SPY", lb.spyCalendarDays),
@@ -130,6 +130,8 @@ async function fetchMarketContext(): Promise<{ sectorRankings: SectorRanking[]; 
     return {
       sector,
       etf,
+      // TASK_CARD_07 Part A: weekly return, needed for the sector flow scan's rank/flow-state - reuses the same already-fetched ETF bars, no new network call.
+      oneWeekReturn: trailingReturn(closes, card03Config.sector.oneWeekTradingDays),
       oneMonthReturn: trailingReturn(closes, card03Config.sector.oneMonthTradingDays),
       threeMonthReturn: trailingReturn(closes, card03Config.sector.threeMonthTradingDays),
     };
@@ -138,7 +140,7 @@ async function fetchMarketContext(): Promise<{ sectorRankings: SectorRanking[]; 
   const sectorRankings = rankSectors(sectorReturns, card03Config);
   const marketRegime = computeMarketRegime(spyCloses, vixCloses, sectorRankings, card03Config);
 
-  return { sectorRankings, marketRegime };
+  return { sectorRankings, marketRegime, sectorReturns };
 }
 
 function evaluateProfileGate(

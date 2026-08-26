@@ -9,9 +9,9 @@ const smallConfig: RegimeConfig = {
 };
 
 const sectors: SectorRanking[] = [
-  { sector: "A", etf: "XLA", oneMonthReturn: 0.1, threeMonthReturn: 0.1, compositeRank: 1, classification: "tailwind" },
-  { sector: "B", etf: "XLB", oneMonthReturn: 0.05, threeMonthReturn: 0.05, compositeRank: 2, classification: "neutral" },
-  { sector: "C", etf: "XLC", oneMonthReturn: -0.05, threeMonthReturn: -0.05, compositeRank: 3, classification: "headwind" },
+  { sector: "A", etf: "XLA", oneWeekReturn: 0.02, oneMonthReturn: 0.1, threeMonthReturn: 0.1, compositeRank: 1, classification: "tailwind" },
+  { sector: "B", etf: "XLB", oneWeekReturn: 0.01, oneMonthReturn: 0.05, threeMonthReturn: 0.05, compositeRank: 2, classification: "neutral" },
+  { sector: "C", etf: "XLC", oneWeekReturn: -0.01, oneMonthReturn: -0.05, threeMonthReturn: -0.05, compositeRank: 3, classification: "headwind" },
 ];
 
 test("computeMarketRegime: all 3 signals bullish -> 顺风, hand-traced SMA/slope", () => {
