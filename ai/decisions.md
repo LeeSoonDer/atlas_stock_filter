@@ -305,3 +305,33 @@ Reason: direct project-owner request, explicitly framed as "纯工程整理,不�
 Tradeoff: `screen_run.json`/`report.html`/etc. are no longer individually unique filenames across the whole `output/` tree (two different runs both have a file literally named `report.html`, just in different folders) - any external tooling or muscle memory built around globbing flat `output/atlas_report_*.html` patterns needs updating (README, canary/README.md, docs/sop/SOP_WEEKLY.md all updated in the same change).
 
 Future implications: the 4 pre-existing historical run artifacts (all from 2026-08-24) were migrated by hand into `output/runs/2026-08-24/` (first) and `_1409`/`_1418`/`_1419` (subsequent), replicating exactly what the new code would have produced - these are gitignored regenerable files, so the migration itself left no git history. `canary/atlas_payload_baseline.txt`'s cited source path (`output/atlas_payload_2026-08-24T14-07-43-049Z.txt`) no longer exists under that name; `canary/README.md` was updated to note this explicitly rather than leaving a dangling reference.
+
+## 2026-08-27 - TASK_CARD_07 Part B: candidate/watchlist caps changed in place (config/card05.json), not a new parallel config
+
+Decision: `config/card05.json`'s `select.maxCandidates` changed from 5 to 3 and `select.maxWatchlist` from 10 to 8, directly in the same file/keys TASK_CARD_05 introduced - no new `card07.json` `select` section was created alongside it.
+
+Reason: Amendment 13's "双层候选制" (第一层至多3, 第二层至多8) redefines the same underlying selection mechanism CARD 05 built (`selectCandidates`/`selectWatchlist`, promotion state machine, near-miss fill), not a parallel/independent one - the card's own SCOPE text says to reuse CARD 05's logic as-is ("沿用 CARD 05 逻辑"). Two config files both claiming to define the same cap would be a duplicate, contradictable source of truth; a single in-place value change is the more honest representation of "this number changed," and the `select/` module's code required zero changes.
+
+Tradeoff: none identified - this is a pure config value change; every existing selectCandidates/selectWatchlist unit test constructs its own SelectConfig object rather than reading the real file, so none needed updating.
+
+Future implications: `config/card07.json` exists for genuinely new CARD 07 concepts only (currently just `sectorFlow`'s rank thresholds) - it is not the home for tier-cap numbers.
+
+## 2026-08-27 - TASK_CARD_07 Part A: AI 基建/航天太空 hot-sector baskets are a hand-curated, unverified approximation - disclosed, not hidden
+
+Decision: `config/hot_sectors.json`'s two basket-kind entries (AI 基建: 10 tickers; 航天/太空: 8 tickers) were assembled from general knowledge of well-known companies in each theme, not empirically verified against any official industry/sector classification the way every other data source in this repo has been (SEC EDGAR, FINRA, Yahoo fields all live-verified before use per this project's anti-hallucination rule).
+
+Reason: the card explicitly anticipates and sanctions this ("AI基建与航天太空可能跨板块,用ticker篮子近似"), and its own circuit-breaker offers an even lighter fallback ("首版降级为'仅标注该主题本周有无候选进入'") if precise mapping proves too complex. Rather than either fabricating a precise-looking sector classification with no real basis, or taking the minimal checkbox-only fallback, the chosen middle path computes REAL aggregate weekly-return/squeeze-density numbers from whichever basket tickers happen to already be present in that run's gate-passed universe (their OHLCV is already cached from Phase B enrichment - no new network calls) - the underlying per-ticker numbers are real and traceable, only the theme-to-ticker membership itself is an unverified, disclosed approximation.
+
+Tradeoff: some basket tickers may be stale (delisted, renamed, ticker-changed) by the time this runs, given the list was assembled from general knowledge rather than a live lookup. This degrades gracefully rather than fabricating: a ticker not found in `checkpoint.enrichResults` is silently excluded from the average and the resulting reduced coverage is disclosed via `basketCoverage: {found, total}` in both the payload text ("篮子覆盖: N/M...") and (once Part C lands) the HTML report - never silently assumed complete.
+
+Future implications: if the project owner wants a more rigorous basket (or to swap in a real thematic ETF as a proxy, e.g. an existing AI/robotics or space-focused ETF), `config/hot_sectors.json` is the single edit point - no code change needed. Worth revisiting once this repo has run enough times to notice which basket tickers consistently fail to resolve.
+
+## 2026-08-27 - TASK_CARD_07 Part A: sector flow rank is its own weekly-return ranking, independent of sectorStrength.ts's 1mo/3mo composite rank
+
+Decision: `SectorFlowEntry.rank` (1-11, used for the flow_in/flow_out threshold rule) is computed fresh by sorting sectors on `oneWeekReturn` alone - it does NOT reuse or derive from `SectorRanking.compositeRank` (the existing 1-month/3-month blended rank used for candidate-level tailwind/headwind tagging, unchanged since TASK_CARD_03).
+
+Reason: the card's own flow-state rule ties rank directly to weekly return sign ("rank 前四且周涨正 = flow_in"), which only makes sense if rank is itself weekly-return-based - a composite 1mo/3mo rank could disagree with the current week's direction entirely (e.g. a sector up big over 3 months but down this week), which would make the flow_in/flow_out labels internally inconsistent with their own stated numbers. These are now two deliberately separate ranking systems answering two different questions: sectorStrength's composite rank answers "which sector has been strong over the medium term" (feeds candidate-level tailwind/headwind); sector_scan's weekly rank answers "where did money move this week" (feeds the flow scan). Both are legitimate, non-conflicting views computed from the same underlying sector ETF price data.
+
+Tradeoff: a sector could simultaneously show as "headwind" (weak 1mo/3mo) on a candidate's payload entry and "flow_in" (strong this week) in the sector flow scan - this is not a bug, it is two genuinely different timeframes disagreeing, and should be read as such rather than reconciled into one number.
+
+Future implications: if a future card wants a single unified sector ranking, this would need a deliberate redesign rather than just picking one of the two existing systems - they answer different questions on purpose.
