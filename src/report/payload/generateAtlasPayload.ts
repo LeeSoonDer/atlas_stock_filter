@@ -1,4 +1,25 @@
 import type { PayloadCandidateInput, PayloadInput } from "./types.js";
+import type { HotSectorEntry, SectorFlowEntry } from "../../screen/sector_scan/types.js";
+
+const FLOW_STATE_LABEL: Record<string, string> = { flow_in: "流入", flow_out: "流出", flat: "横盘", unknown: "不可得" };
+
+function fmtPct(v: number | null): string {
+  return v === null ? "不可得" : `${(v * 100).toFixed(2)}%`;
+}
+
+function renderSectorFlowRow(f: SectorFlowEntry): string {
+  return `  rank=${f.rank ?? "n/a"} ${f.sector}: 周涨跌=${fmtPct(f.weeklyReturn)}, 挤压密度=${fmtPct(f.squeezeDensity)}, 机构密度=${fmtPct(f.institutionalDensity)}, 内部人集群密度=${fmtPct(f.insiderClusterDensity)}, 资金流向=${FLOW_STATE_LABEL[f.flowState]}, 候选=${f.candidatesInSector}, 观察哨=${f.watchlistInSector}`;
+}
+
+function renderHotSectorEntry(h: HotSectorEntry): string[] {
+  const lines: string[] = [];
+  const coverageNote = h.basketCoverage ? ` (篮子覆盖: ${h.basketCoverage.found}/${h.basketCoverage.total} 成分股在本次筛选宇宙内 - 手工近似,非官方板块分类)` : "";
+  lines.push(`${h.name} [${h.kind === "basket" ? "篮子近似" : h.origin === "anomaly_detected" ? "本周异动板块" : "板块"}]${coverageNote}`);
+  lines.push(`  周涨跌=${fmtPct(h.weeklyReturn)}, 挤压密度=${fmtPct(h.squeezeDensity)}, 资金流向=${FLOW_STATE_LABEL[h.flowState] ?? "不可得"}`);
+  lines.push(`  进候选池: ${h.candidatesInPool.length > 0 ? h.candidatesInPool.join(", ") : "无"}`);
+  lines.push(`  进观察哨: ${h.watchlistInPool.length > 0 ? h.watchlistInPool.join(", ") : "无"}`);
+  return lines;
+}
 
 function fmt(v: number | null | undefined): string {
   if (v === null || v === undefined) return "不可得";
@@ -100,6 +121,21 @@ export function generateAtlasPayload(input: PayloadInput): string {
     }
   }
   lines.push("");
+
+  lines.push("== 全板块资金流谱 (sector_flow_scan, 全11板块, 按rank排序) ==");
+  const sortedFlow = [...input.sectorFlowScan].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
+  for (const f of sortedFlow) lines.push(renderSectorFlowRow(f));
+  lines.push("");
+
+  lines.push("== 热门领域详述 (科技/AI/航天 + 本周异动板块) ==");
+  if (input.hotSectorDetail.length === 0) {
+    lines.push("本次运行无热门领域数据。");
+  } else {
+    for (const h of input.hotSectorDetail) {
+      lines.push(...renderHotSectorEntry(h));
+      lines.push("");
+    }
+  }
 
   lines.push(`== 候选 (${input.candidates.length}) ==`);
   for (const c of input.candidates) {

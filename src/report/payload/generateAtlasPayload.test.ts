@@ -50,6 +50,8 @@ const baseInput: PayloadInput = {
     label: "顺风", labelUnavailableReason: null,
   },
   sectorFootprints: [],
+  sectorFlowScan: [],
+  hotSectorDetail: [],
   candidates: [candidate()],
 };
 
@@ -103,4 +105,36 @@ test("sector footprint anomaly summary lists only flagged sectors with their tri
 test("no sector anomalies -> explicit 'none this run' statement, not an empty section", () => {
   const output = generateAtlasPayload(baseInput); // sectorFootprints: []
   assert.ok(output.includes("本次运行无板块标记"));
+});
+
+test("sector_flow_scan section lists sectors sorted by rank with weekly return, densities, flow state, and pool counts", () => {
+  const input: PayloadInput = {
+    ...baseInput,
+    sectorFlowScan: [
+      { sector: "Technology", etf: "XLK", rank: 2, weeklyReturn: -0.021, squeezeDensity: 0.042, institutionalDensity: 0.03, insiderClusterDensity: 0.01, flowState: "flow_out", candidatesInSector: 1, watchlistInSector: 2 },
+      { sector: "Healthcare", etf: "XLV", rank: 1, weeklyReturn: 0.023, squeezeDensity: 0.081, institutionalDensity: 0.05, insiderClusterDensity: 0.02, flowState: "flow_in", candidatesInSector: 2, watchlistInSector: 0 },
+    ],
+  };
+  const output = generateAtlasPayload(input);
+  const flowSection = output.split("== 全板块资金流谱")[1].split("== 热门领域详述")[0];
+  // Healthcare (rank 1) must appear before Technology (rank 2) - sorted by rank.
+  assert.ok(flowSection.indexOf("Healthcare") < flowSection.indexOf("Technology"));
+  assert.ok(flowSection.includes("2.30%")); // weeklyReturn formatted as a percentage
+  assert.ok(flowSection.includes("流入"));
+  assert.ok(flowSection.includes("流出"));
+});
+
+test("hot sector detail: basket entries disclose coverage; sector entries do not", () => {
+  const input: PayloadInput = {
+    ...baseInput,
+    hotSectorDetail: [
+      { name: "AI 基建", kind: "basket", origin: "named", sectorFlowRef: null, basketCoverage: { found: 2, total: 3 }, weeklyReturn: 0.01, squeezeDensity: 0.2, flowState: "flow_in", candidatesInPool: ["NVDA"], watchlistInPool: [] },
+      { name: "科技/软件", kind: "sector", origin: "named", sectorFlowRef: null, basketCoverage: null, weeklyReturn: -0.02, squeezeDensity: 0.04, flowState: "flow_out", candidatesInPool: [], watchlistInPool: [] },
+    ],
+  };
+  const output = generateAtlasPayload(input);
+  assert.ok(output.includes("2/3"));
+  assert.ok(output.includes("手工近似"));
+  assert.ok(output.includes("NVDA"));
+  assert.ok(output.includes("进候选池: 无")); // 科技/软件 has no candidates this run
 });

@@ -58,6 +58,11 @@ import {
 import type { ScreeningLedgerEntry } from "../ledger/types.js";
 import card05ConfigJson from "../../config/card05.json" with { type: "json" };
 import { resolveRunFolder } from "./resolveRunFolder.js";
+import { computeSectorFlowScan, computeHotSectorDetail } from "./sector_scan/index.js";
+import type { BasketTickerStat, CandidateSectorInfo } from "./sector_scan/index.js";
+import type { HotSectorEntry, HotSectorsConfig, SectorFlowConfig, SectorFlowEntry } from "./sector_scan/types.js";
+import card07ConfigJson from "../../config/card07.json" with { type: "json" };
+import hotSectorsConfigJson from "../../config/hot_sectors.json" with { type: "json" };
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
@@ -71,6 +76,8 @@ const card04Config = card04ConfigJson as InsiderClusterConfig &
   };
 const sectorFootprintConfig = sectorFootprintConfigJson as FootprintConfig;
 const card05Config = card05ConfigJson as SelectConfig & FmpConfig;
+const card07Config = card07ConfigJson as SectorFlowConfig;
+const hotSectorsConfig = hotSectorsConfigJson as HotSectorsConfig;
 
 /**
  * TASK_CARD_06 SCOPE 2: maps each named pipeline segment (marked via
@@ -93,6 +100,7 @@ const PHASE_CATEGORY: Record<string, "universe" | "fetch" | "detect" | "report">
   detect_sector_footprint: "detect",
   fetch_market_context: "fetch",
   detect_select: "detect",
+  detect_sector_flow: "detect",
   fetch_fmp: "fetch",
   report_generate: "report",
   report_ledger: "report",
@@ -245,6 +253,10 @@ export interface ScreenRunResult {
     };
     /** TASK_CARD_03_PATCH Part A. One entry per SPDR sector (11), computed over the full gate-passed universe. */
     sectorFootprints: SectorFootprint[];
+    /** TASK_CARD_07 Part A. All 11 SPDR sectors, ranked by this week's return. */
+    sectorFlowScan: SectorFlowEntry[];
+    /** TASK_CARD_07 Part A. Named hot sectors + any real sector flagged footprintAnomaly this run but not already named. */
+    hotSectorDetail: HotSectorEntry[];
     elapsedMs: number;
     /**
      * TASK_CARD_06 SCOPE 2: this run's total elapsed time broken into the
@@ -499,7 +511,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   mark("detect_sector_footprint");
 
   console.error(`[screen] Phase market context: sector rankings + regime snapshot...`);
-  const { sectorRankings, marketRegime } = await fetchMarketContext();
+  const { sectorRankings, marketRegime, sectorReturns } = await fetchMarketContext();
   mark("fetch_market_context");
   const sectorRankBySector = new Map(sectorRankings.map((r) => [r.sector, r]));
 
@@ -536,10 +548,48 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   console.error(`[screen] Phase select done: ${selectedCandidates.length} candidates, ${watchlistEntries.length} watchlist, ${promotedThisRun.length} promoted`);
   mark("detect_select");
 
+  const enrichedBySymbol = new Map(enrichedSymbols.map((s) => [s.symbol, s]));
+
+  // TASK_CARD_07 Part A: full 11-sector flow scan + hot-sector detail
+  // (科技/软件, AI基建, 航天/太空 + any real sector flagged footprintAnomaly
+  // this run but not already named). Reuses already-fetched sector ETF
+  // returns and already-cached basket-ticker OHLCV - no new network calls.
+  console.error(`[screen] Phase sector flow: computing weekly flow scan + hot-sector detail...`);
+  const candidateSectorCounts = new Map<string, number>();
+  const watchlistSectorCounts = new Map<string, number>();
+  const candidatesInfo: CandidateSectorInfo[] = selectedCandidates.map((c) => {
+    const sector = enrichedBySymbol.get(c.symbol)?.sector;
+    if (sector) candidateSectorCounts.set(sector, (candidateSectorCounts.get(sector) ?? 0) + 1);
+    return { symbol: c.symbol, sector };
+  });
+  const watchlistInfo: CandidateSectorInfo[] = watchlistEntries.map((w) => {
+    const sector = enrichedBySymbol.get(w.symbol)?.sector;
+    if (sector) watchlistSectorCounts.set(sector, (watchlistSectorCounts.get(sector) ?? 0) + 1);
+    return { symbol: w.symbol, sector };
+  });
+  const sectorFlowScan = computeSectorFlowScan(sectorReturns, sectorFootprints, candidateSectorCounts, watchlistSectorCounts, card07Config);
+
+  const basketTickerSet = new Set(hotSectorsConfig.hotSectors.filter((d) => d.kind === "basket").flatMap((d) => d.tickers ?? []));
+  const basketTickerStats = new Map<string, BasketTickerStat>();
+  for (const ticker of basketTickerSet) {
+    const enrich = checkpoint.enrichResults[ticker];
+    const matchedSymbol = enrichedBySymbol.get(ticker);
+    if (!enrich || !matchedSymbol) continue; // not in this run's gate-passed universe - honestly excluded from the basket average, not fabricated (see config/hot_sectors.json's coverage-disclosure comment)
+    const closes = cleanBars(enrich.ohlcv ?? []).map((b) => b.close);
+    basketTickerStats.set(ticker, {
+      weeklyReturn: trailingReturn(closes, card03Config.sector.oneWeekTradingDays),
+      volatilityCompressionHit: matchedSymbol.buckets.includes("volatility_compression_setup"),
+    });
+  }
+  const hotSectorDetail = computeHotSectorDetail(sectorFlowScan, sectorFootprints, hotSectorsConfig, basketTickerStats, candidatesInfo, watchlistInfo);
+  console.error(
+    `[screen] Phase sector flow done: ${sectorFlowScan.filter((f) => f.flowState === "flow_in").length} flow_in, ${sectorFlowScan.filter((f) => f.flowState === "flow_out").length} flow_out, ${hotSectorDetail.length} hot-sector entries`,
+  );
+  mark("detect_sector_flow");
+
   // TASK_CARD_05 SCOPE 1: FMP enrichment only for the narrowed candidate+watchlist pool (<= 15), never the full universe (Memo No.4 E17).
   const enrichPoolSymbols = [...new Set([...selectedCandidates.map((c) => c.symbol), ...watchlistEntries.map((w) => w.symbol)])];
   console.error(`[screen] Phase FMP: ${enrichPoolSymbols.length} candidate+watchlist symbols${process.env.FMP_API_KEY ? "" : " (no FMP_API_KEY configured - all 不可得)"}...`);
-  const enrichedBySymbol = new Map(enrichedSymbols.map((s) => [s.symbol, s]));
   const fmpBySymbol = new Map<string, FmpEnrichmentResult>();
   for (const symbol of enrichPoolSymbols) {
     const yahooPrice = enrichedBySymbol.get(symbol)?.regularMarketPrice;
@@ -592,6 +642,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length },
     marketRegime,
     sectorFootprints,
+    sectorFlowScan,
+    hotSectorDetail,
     candidates: payloadCandidates,
   });
   const dissentPayloadText = generateDissentPayload(
@@ -751,6 +803,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
         recordCount: shortInterestFile?.records.size ?? 0,
       },
       sectorFootprints,
+      sectorFlowScan,
+      hotSectorDetail,
       elapsedMs: Date.now() - t0,
       timingBreakdown,
       failureAttribution,
