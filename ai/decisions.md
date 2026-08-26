@@ -335,3 +335,33 @@ Reason: the card's own flow-state rule ties rank directly to weekly return sign 
 Tradeoff: a sector could simultaneously show as "headwind" (weak 1mo/3mo) on a candidate's payload entry and "flow_in" (strong this week) in the sector flow scan - this is not a bug, it is two genuinely different timeframes disagreeing, and should be read as such rather than reconciled into one number.
 
 Future implications: if a future card wants a single unified sector ranking, this would need a deliberate redesign rather than just picking one of the two existing systems - they answer different questions on purpose.
+
+## 2026-08-27 - TASK_CARD_07 Part C: dark-only visual theme, no light-mode variant, deliberate
+
+Decision: the rebuilt HTML report has a single dark "intel briefing" theme (background #0a0e14 etc., copied from MOCKUP_intel_briefing_v4.html) with no `@media (prefers-color-scheme: light)` override - unlike TASK_CARD_05's original report, which did support both.
+
+Reason: the project owner explicitly instructed following the mockup's own visual style, and the mockup itself has zero light-mode consideration - it's a single, deliberately dark "ops/intel dashboard" identity, a genre where dark-only is a normal, intentional design choice (not an oversight to "fix"). Adding an unrequested light-mode variant would be inventing design work not asked for, and risks clashing with a reference the project owner named specifically.
+
+Tradeoff: a user with an OS-level light-mode preference gets a dark report regardless - a deliberate deviation from this repo's general "respect OS preference" pattern used elsewhere (e.g. canary docs, this file's own light-mode entries), scoped specifically to this one report's genre-appropriate identity.
+
+Future implications: if the project owner later wants a light-mode toggle, that's a new, explicitly-requested design task, not an omission to quietly patch in.
+
+## 2026-08-27 - TASK_CARD_07 Part C: gradients/violet reintroduced, superseding TASK_CARD_05's "no AI-slop" constraint
+
+Decision: the new styles.ts uses `linear-gradient()` backgrounds (market/theme/forecast panels) and a violet accent color (`--violet`), both of which TASK_CARD_05's own DONE-WHEN explicitly tested AGAINST ("no gradients, purple/violet keywords" - see renderReport.test.ts's TASK_CARD_05-era assertion, now removed).
+
+Reason: TASK_CARD_05's constraint was a documented fallback for the specific situation where no design reference existed ("没有 P4_DESIGN_SPEC... 极简终端风,禁止 AI-slop" - see styles.ts's TASK_CARD_05-era comment) - it was never an absolute, permanent rule independent of context. TASK_CARD_07 gives an explicit, named visual reference (MOCKUP_intel_briefing_v4.html) that the project owner pointed to directly; a user's current, explicit instruction naming a specific design outranks an earlier card's own stopgap fallback preference, especially once that earlier card's stated precondition (no reference exists) no longer holds. The mockup's gradients are subtle panel-to-panel background tints and a soft radial glow, not the bright/saturated "AI-slop" pattern the original constraint was actually guarding against.
+
+Tradeoff: none identified as a functional risk - this is a deliberate, instructed visual direction, not a regression. The old anti-gradient test assertion was removed from renderReport.test.ts rather than kept-but-ignored, since a stale contradictory test would be actively misleading to a future reader.
+
+Future implications: if a later card again lacks a named design reference, TASK_CARD_05's original "no AI-slop" fallback reasoning is still sound guidance to fall back on - it wasn't wrong, just superseded by a more specific instruction for this card.
+
+## 2026-08-27 - TASK_CARD_07 Part C: every mockup prose/judgment element gated behind an optional `radarNarrative` field, defaulting to a literal placeholder
+
+Decision: `ReportInput.radarNarrative` (types.ts) is fully optional, and every function that would otherwise render mockup-style prose (market recap paragraph, per-sector verdict, theme narrative, per-candidate desc/grade/probability/confidence, excluded-item reasoning, weekly forecast) checks for its presence and renders the literal string "待研究层填充" when absent or when a specific sub-field is missing - there is no code path that synthesizes placeholder-adjacent "reasonable-sounding" filler text.
+
+Reason: this is the card's own explicit, non-negotiable architecture boundary ("关键边界: 应用层只做数据与渲染,绝不生成任何判断/预测/白话文字...首次运行时若尚无 Radar 返回...主题区与白话区显示'待研究层填充'占位,不得由应用层编造") and the DONE-WHEN item literally requires it be grep-verifiable ("grep 验证无硬编码判断句"). A single shared literal placeholder string (rather than several different ad-hoc "no data" messages) makes this both simpler to implement correctly and trivially greppable for verification - one string to check for, one string that can never accidentally look like real analysis.
+
+Tradeoff: the pre-Radar report is visually much sparser than the full mockup (most of its content is exactly this kind of prose) - candidate cards show real facts (RSI/SMA/volume/badges/sparkline) but an "N/A" grade box and placeholder desc until a real Radar pass happens. This is intentional, not a regression - the mockup is Radar's finished output, not this repo's own claim.
+
+Future implications: once the project owner does run screen -> Radar -> Red Team and gets back real narrative content, that content needs to be threaded into pipeline.ts's renderReport() call as a `radarNarrative` object (currently nothing populates this - it's wired into the type/render layer only, per this card's own scope boundary; actually parsing a Radar response and building this object is future work, likely CARD 08's MCP-proxy territory or a manual one-off script).
