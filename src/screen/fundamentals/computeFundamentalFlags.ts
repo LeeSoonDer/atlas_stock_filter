@@ -6,7 +6,16 @@ import type {
   ProfitabilityFlag,
   RevenueGrowthFlag,
 } from "../../data/types.js";
-import type { FundamentalsConfig, RawFundamentalsData, RawPeriod } from "./types.js";
+import type { FundamentalsConfig, RawBalanceSheetPeriod, RawCashFlowPeriod, RawFundamentalsData, RawPeriod } from "./types.js";
+import type { ProfileName } from "../types.js";
+
+/** TASK_CARD_09 Part C / 修正案十七. */
+export interface QualityFlagsConfig {
+  fundamentals: {
+    accrualQualityThreshold: number;
+    cashRunwayThresholdMonths: number;
+  };
+}
 
 function lastNWithField<K extends keyof RawPeriod>(periods: RawPeriod[], field: K, n: number): RawPeriod[] {
   const withField = periods.filter((p) => p[field] !== undefined);
@@ -132,9 +141,87 @@ function earningsSoonFlag(
   };
 }
 
+/** null for an invalid Date rather than throwing - defensive against malformed upstream period data. */
+function isoDate(d: Date): string | null {
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+
+/**
+ * TASK_CARD_09 Part C / 修正案十七 "应计质量旗标": (netIncome - operatingCashFlow) / totalAssets
+ * for the MOST RECENT quarter that has all three values for the SAME
+ * reporting date - not required to be the latest quarter overall (a
+ * quarter missing one of the three simply isn't a candidate). No profile
+ * restriction (unlike cash runway below) - the card's text doesn't limit
+ * this one to SMALL_SPEC.
+ */
+function accrualQualityFlag(
+  netIncomePeriods: RawPeriod[],
+  cashFlowPeriods: RawCashFlowPeriod[],
+  balanceSheetPeriods: RawBalanceSheetPeriod[],
+  threshold: number,
+): { flag?: boolean; availability: Availability; ratio?: number } {
+  const cashFlowByDate = new Map(
+    cashFlowPeriods
+      .filter((p) => p.operatingCashFlow !== undefined && isoDate(p.date) !== null)
+      .map((p) => [isoDate(p.date) as string, p.operatingCashFlow!]),
+  );
+  const assetsByDate = new Map(
+    balanceSheetPeriods
+      .filter((p) => p.totalAssets !== undefined && isoDate(p.date) !== null)
+      .map((p) => [isoDate(p.date) as string, p.totalAssets!]),
+  );
+
+  const withNetIncome = [...netIncomePeriods].filter((p) => p.netIncome !== undefined).sort((a, b) => b.date.getTime() - a.date.getTime());
+  for (const period of withNetIncome) {
+    const key = isoDate(period.date);
+    if (key === null) continue;
+    const ocf = cashFlowByDate.get(key);
+    const assets = assetsByDate.get(key);
+    if (ocf === undefined || assets === undefined || assets === 0) continue;
+    const ratio = (period.netIncome! - ocf) / assets;
+    return { flag: ratio > threshold, availability: "可得", ratio };
+  }
+  return { availability: "不可得" };
+}
+
+/**
+ * TASK_CARD_09 Part C / 修正案十七 "现金跑道旗标": 现金及等价物 / 过去12个月
+ * 平均现金消耗速率, SMALL_SPEC only (caller gates on profile). Requires
+ * the latest cashAndCashEquivalents AND the 4 most recent CONSECUTIVE
+ * quarters' operatingCashFlow (a genuine trailing-12-month sum, not a
+ * partial-quarter estimate) - anything less is 不可得, never a partial
+ * guess. A cash-flow-positive company (trailing OCF sum >= 0) has no
+ * "burn rate" the card's formula can divide by - `months: null` with
+ * availability still 可得 (evaluated, formula doesn't apply), distinct
+ * from a genuine data-availability failure.
+ */
+function cashRunwayFlag(
+  cashFlowPeriods: RawCashFlowPeriod[],
+  balanceSheetPeriods: RawBalanceSheetPeriod[],
+  thresholdMonths: number,
+): { months: number | null; availability: Availability; dilutionRisk?: boolean } {
+  const withCash = [...balanceSheetPeriods].filter((p) => p.cashAndCashEquivalents !== undefined).sort((a, b) => b.date.getTime() - a.date.getTime());
+  const withOcf = [...cashFlowPeriods].filter((p) => p.operatingCashFlow !== undefined).sort((a, b) => b.date.getTime() - a.date.getTime());
+  if (withCash.length === 0 || withOcf.length < 4) {
+    return { months: null, availability: "不可得" };
+  }
+
+  const latestCash = withCash[0].cashAndCashEquivalents!;
+  const trailing4 = withOcf.slice(0, 4);
+  const trailingOcfSum = trailing4.reduce((a, p) => a + p.operatingCashFlow!, 0);
+
+  if (trailingOcfSum >= 0) {
+    return { months: null, availability: "可得", dilutionRisk: false };
+  }
+  const monthlyBurn = -trailingOcfSum / 12;
+  const months = monthlyBurn === 0 ? null : latestCash / monthlyBurn;
+  return { months, availability: "可得", dilutionRisk: months !== null && months < thresholdMonths };
+}
+
 export function computeFundamentalFlags(
   raw: RawFundamentalsData,
-  config: FundamentalsConfig,
+  config: FundamentalsConfig & QualityFlagsConfig,
+  profile: ProfileName,
   now: Date = new Date(),
 ): Omit<FundamentalsSlice, "symbol" | "fetchedAt"> {
   const c = config.fundamentals;
@@ -143,8 +230,9 @@ export function computeFundamentalFlags(
   const profitability = profitabilityFlag(raw.quarterlyFinancials);
   const leverage = leverageFlag(raw.totalCash, raw.totalDebt, c.highLeverageDebtToCashRatio);
   const earnings = earningsSoonFlag(raw.earningsDates, now, c.earningsSoonWindowDays);
+  const accrual = accrualQualityFlag(raw.quarterlyFinancials, raw.quarterlyCashFlow, raw.quarterlyBalanceSheet, c.accrualQualityThreshold);
 
-  return {
+  const base: Omit<FundamentalsSlice, "symbol" | "fetchedAt"> = {
     revenueGrowthFlag: revenue.flag,
     revenueGrowthFlagAvailability: revenue.availability,
     grossMarginFlag: margin.flag,
@@ -158,5 +246,18 @@ export function computeFundamentalFlags(
     earningsSoon: earnings.earningsSoon,
     earningsDate: earnings.earningsDate,
     earningsDateAvailability: earnings.availability,
+    accrualFlag: accrual.flag,
+    accrualFlagAvailability: accrual.availability,
+    accrualRatio: accrual.ratio,
+  };
+
+  if (profile !== "SMALL_SPEC") return base;
+
+  const runway = cashRunwayFlag(raw.quarterlyCashFlow, raw.quarterlyBalanceSheet, c.cashRunwayThresholdMonths);
+  return {
+    ...base,
+    cashRunwayMonths: runway.months,
+    cashRunwayAvailability: runway.availability,
+    dilutionRisk: runway.dilutionRisk,
   };
 }

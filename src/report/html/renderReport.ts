@@ -194,6 +194,8 @@ function renderCandidateCard(c: HtmlReportCandidateInput, index: number, default
     c.promoted ? `<span class="up">观察哨升级而来</span>` : "",
     c.speculative ? `<span class="tier-warn">SMALL_SPEC</span>` : "",
     c.riskLevel !== "normal" ? `<span class="tier-warn">风险等级: ${RISK_LABEL[c.riskLevel]}</span>` : "",
+    c.fundamentals?.accrualFlag === true ? `<span class="tier-warn">应计质量存疑</span>` : "",
+    c.fundamentals?.dilutionRisk === true ? `<span class="tier-warn">稀释风险(现金跑道${fmt(c.fundamentals.cashRunwayMonths, 1)}个月)</span>` : "",
   ].filter(Boolean);
 
   const hitCount = c.footprintDetail.filter((d) => d.status === "hit").length;

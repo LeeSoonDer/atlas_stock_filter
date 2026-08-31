@@ -450,3 +450,21 @@ Verification: 新增 25 个测试(`computeOptionsIntelligence.test.ts` 11 个纯
 Tradeoff: `yahooFinance.options()` 需要 session crumb(`needsCrumb: true`),这是本次会话第一次调用这个模块 - 没有把 crumb 机制本身的稳定性验证到位(只验证了类型与失败路径的降级),真实运行时若这个环境从未成功建立过 crumb,Part B 可能对本环境的每个候选都返回不可得,属已知、被熔断规则明确允许的降级("期权链抓取不稳定时,Part B可整体降级为跳过并标不可得,不阻塞Part A/C")- 会在下面的真实 run 里如实记录发生了哪种情况,不会假装验证过、实际没测过的部分。`nearOtmCallOi`"相对该股历史水平"这半句话卡片原文比 `put_call_ratio` 的"较上次运行的变化"更模糊 - 选择了与 `put_call_ratio` 同一套"较上次运行"单值口径,而不是也上20次滚动均值,为了实现简单和字段定义一致性,已披露非唯一可能解读。
 
 Future implications: `checkpoint.optionsHistory` 会随每次 run 持续增长(每 symbol 封顶20条,不是无限增长),但只覆盖候选+观察哨池,量级远小于 `institutionalHistory`,不构成 checkpoint.json 体积担忧。
+
+## 2026-08-31 - TASK_CARD_09 Part C DONE(质量与稀释旗标)
+
+Decision: `src/screen/fundamentals/computeFundamentalFlags.ts` 新增 `accrualQualityFlag()`(应计质量,(净利润−经营活动现金流)/总资产,超阈值标 `accrualFlag: true`,**不限档位** - 卡片原文只对现金跑道限定 SMALL_SPEC,应计质量没有这个限制)与 `cashRunwayFlag()`(现金及等价物/过去12个月平均现金消耗速率,`computeFundamentalFlags` 新增 `profile: ProfileName` 必填参数,只有 `profile==="SMALL_SPEC"` 才计算,STANDARD 档 `cashRunwayMonths`/`cashRunwayAvailability`/`dilutionRisk` 三个字段整体是 `undefined`(不是"不可得")- 用"字段缺席"表达"按设计未评估",跟"评估过但取不到数据"的 `不可得` 是两种不同语义,复用了本 repo 既有的这套区分惯例)。
+
+**数据源**:`src/data/yahooClient.ts` 的 `fetchFundamentalsRaw()` 新增两路 `fundamentalsTimeSeries` 调用(`module: "cash-flow"` 拿 `operatingCashFlow`,`module: "balance-sheet"` 拿 `totalAssets`/`cashAndCashEquivalents`)- 字段名是**读库源码**(`node_modules/yahoo-finance2/esm/src/lib/timeseries.js` 里的 `Timeseries_Keys` 常量表,确认 `TotalAssets`/`CashAndCashEquivalents`/`OperatingCashFlow` 三个键真实存在,再对照 `fundamentalsTimeSeries.js` 自身的 `processResponse()` 转换逻辑推出返回值是去掉 period 前缀、首字母小写的版本)确认的,不是记忆,也披露这不是真实调用验证(本环境没有触发过这两路调用 - 会在下面的真实 run 里核实)。
+
+**日期匹配,不是"最新季度就用"**:`accrualQualityFlag()` 从最近的季度开始向前找,只在净利润/经营现金流/总资产**三者恰好同一个报告期**都有值时才计算,任何一项缺失就跳到更早一期,而不是拿三个不同期的数字硬凑一个比率。现金跑道要求**连续4个**季度的经营现金流都有值(不足4个直接不可得,不做部分季度的估算),且明确区分"经营现金流为正(不烧钱)"→`cashRunwayMonths: null` 但 `availability: 可得`(公式本身不适用,不是数据缺失)与"数据真缺"→`不可得` 这两种不同的 null 成因。
+
+**误踩的一个真实 bug**:接完线跑既有测试套件时,`profitability` 那个测试(用 `"q1"`/`"q2"` 这种非日期字符串当 period 标签,此前从未被当真实日期用过)让新的 `accrualQualityFlag()` 内部对 `Invalid Date` 调 `.toISOString()` 直接抛错 - 之前任何一个字段都没真正把 `.date` 转成 ISO 字符串过。修了 `isoDate()` 让它对无效日期返回 `null` 而不是抛异常,调用处相应跳过,不是把测试 fixture 硬改成真实日期敷衍过去(那样会掩盖生产环境万一收到脏日期数据时同样会崩的真实风险)。
+
+**批处理签名改动**:`src/data/batchFetcher.ts` 的 `runFundamentalsPhase()` 参数从 `string[]` 改成 `Array<{symbol, profile}>`(现金跑道需要知道档位),`pipeline.ts` 相应改用一个新的 `candidatePoolWithProfile` 数组(`candidatePool` 本身仍是纯 `string[]`,别处用途不受影响)。
+
+Verification: 新增 18 个测试(`fundamentals.test.ts` 从 9 个增到 27,payload/report 各 2 个渲染用例,236→249 之前那批基础上再加),`npx tsc --noEmit` clean。DONE-WHEN"确认无标的因其被淘汰"用 `grep -rn "fundamentals" src/screen/select/*.ts src/screen/detectors/*.ts`(排除 `.test.ts`)现场验证零命中 - 应计/稀释旗标从未被任何选取或判定逻辑读取过。
+
+Tradeoff: `accrualQualityFlag`/`cashRunwayFlag` 用到的两路新 `fundamentalsTimeSeries` 调用,字段名是读库源码常量表确认的,不是真实 API 响应验证过的 - 与 CARD 05 的 FMP 字段名、CARD 08 的 FRED 响应体是同一类"文档/源码验证、非真实调用验证"的已披露残余风险。`runFundamentalsPhase` 现在对每个候选池 symbol(本 repo 近期一次真实 run 是 799 个)多发 2 次网络请求 - 数量级明显大于 Part B 的候选+观察哨池(≤15),对整体 run 时长的真实影响会在下面的真实 run 里如实记录。
+
+Future implications: `accrualRatio`(原始比率,不只是布尔旗标)已保留在 `FundamentalsSlice` 上,供未来任何需要具体数值(而非只是超阈值与否)的场景直接读取,不需要重新计算。

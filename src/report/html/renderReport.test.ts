@@ -291,6 +291,33 @@ test("TASK_CARD_09 MUST-NOT: no directional/counterparty wording anywhere in a g
   assert.ok(!forbidden.test(html), `report leaked forbidden directional wording: ${html.match(forbidden)}`);
 });
 
+test("TASK_CARD_09 Part C: accrualFlag=true and dilutionRisk=true render visible badges on the candidate card", () => {
+  const input: ReportInput = {
+    ...baseInput,
+    candidates: [
+      candidate({
+        fundamentals: {
+          symbol: "TEST", fetchedAt: "t",
+          revenueGrowthFlagAvailability: "不可得", grossMarginFlagAvailability: "不可得",
+          profitabilityFlagAvailability: "不可得", leverageFlagAvailability: "不可得",
+          earningsSoon: false, earningsDateAvailability: "不可得",
+          accrualFlag: true, accrualFlagAvailability: "可得", accrualRatio: 0.2,
+          cashRunwayMonths: 4.5, cashRunwayAvailability: "可得", dilutionRisk: true,
+        },
+      }),
+    ],
+  };
+  const html = renderReport(input);
+  assert.ok(html.includes("应计质量存疑"));
+  assert.ok(html.includes("稀释风险(现金跑道4.5个月)"));
+});
+
+test("TASK_CARD_09 Part C: no badges when accrualFlag/dilutionRisk are false or fundamentals absent", () => {
+  const html = renderReport(baseInput); // default fixture: fundamentals undefined
+  assert.ok(!html.includes("应计质量存疑"));
+  assert.ok(!html.includes("稀释风险"));
+});
+
 test("footprintStrength null (all-unavailable) renders '不可得' with no progress bar, never a 0% bar", () => {
   const input: ReportInput = {
     ...baseInput,

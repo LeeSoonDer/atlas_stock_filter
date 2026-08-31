@@ -63,6 +63,10 @@ function renderCandidate(c: PayloadCandidateInput): string[] {
     lines.push(`  profitability: ${f.profitabilityFlag ?? "null"} [${f.profitabilityFlagAvailability}]`);
     lines.push(`  leverage: ${f.leverageFlag ?? "null"} [${f.leverageFlagAvailability}] (totalCash=${fmt(f.totalCash)}, totalDebt=${fmt(f.totalDebt)})`);
     lines.push(`  earningsSoon: ${f.earningsSoon} (date=${f.earningsDate ?? "n/a"}) [${f.earningsDateAvailability}]`);
+    lines.push(`  accrualFlag: ${f.accrualFlag ?? "null"} [${f.accrualFlagAvailability}] (ratio=${fmt(f.accrualRatio)}) - 旗标,不淘汰`);
+    if (f.cashRunwayAvailability !== undefined) {
+      lines.push(`  cashRunwayMonths: ${fmt(f.cashRunwayMonths)} [${f.cashRunwayAvailability}], dilutionRisk=${f.dilutionRisk ?? "null"} - 旗标,不淘汰(仅SMALL_SPEC档计算)`);
+    }
     lines.push("");
   }
 

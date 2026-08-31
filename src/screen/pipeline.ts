@@ -586,11 +586,12 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   // TASK_CARD_03 SCOPE 1: fundamentals only for the "候选" pool (bucket-
   // triggered symbols), not the full gate-passed universe - see
   // ai/decisions.md. Phase C mirrors Phase B's checkpoint/resume shape.
-  const candidatePool = symbols.filter((s) => s.buckets.length > 0).map((s) => s.symbol);
+  const candidatePoolWithProfile = symbols.filter((s) => s.buckets.length > 0).map((s) => ({ symbol: s.symbol, profile: s.profile }));
+  const candidatePool = candidatePoolWithProfile.map((s) => s.symbol);
   const candidatePoolSet = new Set(candidatePool);
   mark("detect_detectors");
   console.error(`[screen] Phase fundamentals: ${candidatePool.length} candidate-pool symbols...`);
-  await runFundamentalsPhase(candidatePool, checkpoint, CHECKPOINT_PATH);
+  await runFundamentalsPhase(candidatePoolWithProfile, checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase fundamentals done: ${Object.keys(checkpoint.fundamentalsResults).length} fetched total, ${checkpoint.fundamentalsFailures.length} failed total`);
   mark("fetch_fundamentals");
 

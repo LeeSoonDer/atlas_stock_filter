@@ -6,6 +6,8 @@ import { fetchTickerCikMaps, scanOneDailyIndex, fetchAndParseFiling, lookbackWin
 import fetchConfig from "../../config/fetch.json" with { type: "json" };
 import card03Config from "../../config/card03.json" with { type: "json" };
 import card04Config from "../../config/card04.json" with { type: "json" };
+import card09Config from "../../config/card09.json" with { type: "json" };
+import type { ProfileName } from "../screen/types.js";
 
 function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -114,31 +116,38 @@ export async function runEnrichmentPhase(
   }
 }
 
+// TASK_CARD_09 Part C: card03Config stays the single source of truth for
+// its own 4 threshold numbers; card09Config's 2 new ones are merged in
+// at wire-up time here, same pattern pipeline.ts already uses for
+// combinedDetectorsConfig.
+const fundamentalsConfig = { ...card03Config, fundamentals: { ...card03Config.fundamentals, ...card09Config.fundamentals } };
+
 /**
  * Phase C (TASK_CARD_03): fetches + classifies fundamental flags for the
  * "候选" pool only (symbols that triggered at least one CARD 02 detector
  * bucket - see ai/decisions.md), not the full gate-passed universe.
- * Same concurrency/checkpoint/resume shape as Phase B.
+ * Same concurrency/checkpoint/resume shape as Phase B. TASK_CARD_09 Part
+ * C needs each symbol's profile (cash runway is SMALL_SPEC-only).
  */
 export async function runFundamentalsPhase(
-  symbols: string[],
+  symbols: Array<{ symbol: string; profile: ProfileName }>,
   checkpoint: CheckpointState,
   checkpointPath: string,
 ): Promise<void> {
   const done = new Set([...Object.keys(checkpoint.fundamentalsResults), ...checkpoint.fundamentalsFailures]);
-  const remaining = symbols.filter((s) => !done.has(s));
+  const remaining = symbols.filter((s) => !done.has(s.symbol));
   const batches = chunk(remaining, fetchConfig.enrichConcurrency);
 
   for (const [i, batch] of batches.entries()) {
     const settled = await Promise.allSettled(
-      batch.map(async (symbol) => {
+      batch.map(async ({ symbol, profile }) => {
         const raw = await withRetry(() => fetchFundamentalsRaw(symbol), `fundamentals ${symbol}`);
-        const flags = computeFundamentalFlags(raw, card03Config);
+        const flags = computeFundamentalFlags(raw, fundamentalsConfig, profile);
         return { symbol, fetchedAt: new Date().toISOString(), ...flags };
       }),
     );
     settled.forEach((result, idx) => {
-      const symbol = batch[idx];
+      const symbol = batch[idx].symbol;
       if (result.status === "fulfilled") {
         checkpoint.fundamentalsResults[symbol] = result.value;
       } else {

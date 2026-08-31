@@ -93,6 +93,49 @@ test("includes pivot high/low with date and price", () => {
   assert.ok(output.includes("2026-07-15"));
 });
 
+test("TASK_CARD_09 Part C: accrualFlag and cashRunway (SMALL_SPEC) render in the fundamentals section", () => {
+  const input: PayloadInput = {
+    ...baseInput,
+    candidates: [
+      candidate({
+        speculative: true,
+        fundamentals: {
+          symbol: "AAPL", fetchedAt: "t",
+          revenueGrowthFlagAvailability: "不可得", grossMarginFlagAvailability: "不可得",
+          profitabilityFlagAvailability: "不可得", leverageFlagAvailability: "不可得",
+          earningsSoon: false, earningsDateAvailability: "不可得",
+          accrualFlag: true, accrualFlagAvailability: "可得", accrualRatio: 0.15,
+          cashRunwayMonths: 6, cashRunwayAvailability: "可得", dilutionRisk: true,
+        },
+      }),
+    ],
+  };
+  const output = generateAtlasPayload(input);
+  assert.ok(output.includes("accrualFlag: true"));
+  assert.ok(output.includes("旗标,不淘汰"));
+  assert.ok(output.includes("cashRunwayMonths: 6"));
+  assert.ok(output.includes("dilutionRisk=true"));
+});
+
+test("TASK_CARD_09 Part C: cashRunway line is omitted entirely for a STANDARD-profile candidate (undefined availability)", () => {
+  const input: PayloadInput = {
+    ...baseInput,
+    candidates: [
+      candidate({
+        fundamentals: {
+          symbol: "AAPL", fetchedAt: "t",
+          revenueGrowthFlagAvailability: "不可得", grossMarginFlagAvailability: "不可得",
+          profitabilityFlagAvailability: "不可得", leverageFlagAvailability: "不可得",
+          earningsSoon: false, earningsDateAvailability: "不可得",
+          accrualFlag: false, accrualFlagAvailability: "可得", accrualRatio: 0.02,
+        },
+      }),
+    ],
+  };
+  const output = generateAtlasPayload(input);
+  assert.ok(!output.includes("cashRunwayMonths"));
+});
+
 test("event_window entries appear when present", () => {
   const input: PayloadInput = { ...baseInput, candidates: [candidate({ eventWindow: [{ type: "earnings", date: "2026-11-05", daysUntil: 72 }] })] };
   const output = generateAtlasPayload(input);

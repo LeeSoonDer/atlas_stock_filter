@@ -1,6 +1,6 @@
 import YahooFinance from "yahoo-finance2";
 import type { EnrichSlice, OHLCVBar, QuoteSlice } from "./types.js";
-import type { RawFundamentalsData, RawPeriod } from "../screen/fundamentals/types.js";
+import type { RawBalanceSheetPeriod, RawCashFlowPeriod, RawFundamentalsData, RawPeriod } from "../screen/fundamentals/types.js";
 import fetchConfig from "../../config/fetch.json" with { type: "json" };
 
 export const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
@@ -173,6 +173,18 @@ function toRawPeriods(rows: Array<{ date: Date; totalRevenue?: number; grossProf
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
+/** TASK_CARD_09 Part C. */
+function toRawCashFlowPeriods(rows: Array<{ date: Date; operatingCashFlow?: number }>): RawCashFlowPeriod[] {
+  return rows.map((r) => ({ date: r.date, operatingCashFlow: r.operatingCashFlow })).sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+/** TASK_CARD_09 Part C. */
+function toRawBalanceSheetPeriods(rows: Array<{ date: Date; totalAssets?: number; cashAndCashEquivalents?: number }>): RawBalanceSheetPeriod[] {
+  return rows
+    .map((r) => ({ date: r.date, totalAssets: r.totalAssets, cashAndCashEquivalents: r.cashAndCashEquivalents }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
 /**
  * Fetches raw fundamentals inputs for TASK_CARD_03 SCOPE 1 - three
  * independent calls (a symbol-level quoteSummary for financialData +
@@ -195,13 +207,19 @@ export async function fetchFundamentalsRaw(symbol: string): Promise<RawFundament
   const twoYearsAgo = new Date(now - 2 * 365 * 24 * 60 * 60 * 1000);
   const fiveYearsAgo = new Date(now - 5 * 365 * 24 * 60 * 60 * 1000);
 
-  const [summaryResult, quarterlyResult, annualResult] = await Promise.allSettled([
+  // TASK_CARD_09 Part C: two more fundamentalsTimeSeries calls (same
+  // module, different `module` value - cash-flow / balance-sheet, see
+  // that library function's own JSDoc) for accrual quality + cash
+  // runway. Same validateResult:false rationale as the other three calls.
+  const [summaryResult, quarterlyResult, annualResult, cashFlowResult, balanceSheetResult] = await Promise.allSettled([
     yahooFinance.quoteSummary(symbol, { modules: ["financialData", "calendarEvents"] }, { validateResult: false }),
     yahooFinance.fundamentalsTimeSeries(symbol, { period1: twoYearsAgo, type: "quarterly", module: "financials" }, { validateResult: false }),
     yahooFinance.fundamentalsTimeSeries(symbol, { period1: fiveYearsAgo, type: "annual", module: "financials" }, { validateResult: false }),
+    yahooFinance.fundamentalsTimeSeries(symbol, { period1: twoYearsAgo, type: "quarterly", module: "cash-flow" }, { validateResult: false }),
+    yahooFinance.fundamentalsTimeSeries(symbol, { period1: twoYearsAgo, type: "quarterly", module: "balance-sheet" }, { validateResult: false }),
   ]);
 
-  const raw: RawFundamentalsData = { quarterlyFinancials: [], annualFinancials: [], earningsDates: [] };
+  const raw: RawFundamentalsData = { quarterlyFinancials: [], annualFinancials: [], quarterlyCashFlow: [], quarterlyBalanceSheet: [], earningsDates: [] };
 
   if (summaryResult.status === "fulfilled") {
     const { financialData, calendarEvents } = summaryResult.value as {
@@ -219,6 +237,14 @@ export async function fetchFundamentalsRaw(symbol: string): Promise<RawFundament
 
   if (annualResult.status === "fulfilled") {
     raw.annualFinancials = toRawPeriods(annualResult.value);
+  }
+
+  if (cashFlowResult.status === "fulfilled") {
+    raw.quarterlyCashFlow = toRawCashFlowPeriods(cashFlowResult.value);
+  }
+
+  if (balanceSheetResult.status === "fulfilled") {
+    raw.quarterlyBalanceSheet = toRawBalanceSheetPeriods(balanceSheetResult.value);
   }
 
   return raw;
