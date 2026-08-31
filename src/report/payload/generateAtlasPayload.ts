@@ -2,6 +2,7 @@ import type { PayloadCandidateInput, PayloadInput } from "./types.js";
 import type { HotSectorEntry, SectorFlowEntry } from "../../screen/sector_scan/types.js";
 
 const FLOW_STATE_LABEL: Record<string, string> = { flow_in: "流入", flow_out: "流出", flat: "横盘", unknown: "不可得" };
+const CREDIT_LABEL: Record<string, string> = { loose: "宽松", neutral: "中性", tight: "收紧", unknown: "不可得" };
 
 function fmtPct(v: number | null): string {
   return v === null ? "不可得" : `${(v * 100).toFixed(2)}%`;
@@ -37,7 +38,7 @@ function renderCandidate(c: PayloadCandidateInput): string[] {
   lines.push("* * *");
   lines.push(`标的: ${c.symbol} (${c.securityName})`);
   lines.push(
-    `档位: ${c.profile}${c.speculative ? " [SPECULATIVE]" : ""} | 主桶: ${c.primaryBucket} (score=${fmt(c.primaryBucketScore)}) | 命中全部桶: ${c.allBucketsHit.join(", ")}${c.promoted ? " | PROMOTED" : ""}`,
+    `档位: ${c.profile}${c.speculative ? " [SPECULATIVE]" : ""} | risk_level: ${c.riskLevel} | 主桶: ${c.primaryBucket} (score=${fmt(c.primaryBucketScore)}) | 命中全部桶: ${c.allBucketsHit.join(", ")}${c.promoted ? " | PROMOTED" : ""}`,
   );
   lines.push("");
 
@@ -105,6 +106,15 @@ export function generateAtlasPayload(input: PayloadInput): string {
   lines.push(`VIX: current=${fmt(r.vixCurrent)} vs 20日均值=${fmt(r.vixAvg20)}`);
   lines.push(`领涨板块: ${r.leadingSectors.map((s) => s.sector).join(", ") || "无"}`);
   lines.push(`领跌板块: ${r.laggingSectors.map((s) => s.sector).join(", ") || "无"}`);
+  lines.push("");
+
+  const cr = input.creditRegime;
+  lines.push(
+    `信用环境 (credit_regime): ${CREDIT_LABEL[cr.label]}${cr.labelUnavailableReason ? ` (${cr.labelUnavailableReason})` : ""} | OAS=${fmt(cr.oasCurrentBp)}bp (两周前=${fmt(cr.oasPastBp)}bp, 变动=${fmt(cr.oasChangeBp)}bp)`,
+  );
+  if (input.smallSpecForcedDisabled) {
+    lines.push("⚠ SMALL_SPEC 档本次运行被信用收紧强制禁用(修正案十四) - 全部候选风险等级已上调一级");
+  }
   lines.push("");
 
   lines.push("== 板块资金足迹异动 (仅陈述事实,零方向性文字) ==");

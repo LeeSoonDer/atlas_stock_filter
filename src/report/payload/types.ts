@@ -7,12 +7,15 @@ import type { SectorFootprint } from "../../screen/sector_footprint/types.js";
 import type { MarketRegimeSnapshot } from "../../screen/regime/types.js";
 import type { ProfileName } from "../../screen/types.js";
 import type { HotSectorEntry, SectorFlowEntry } from "../../screen/sector_scan/types.js";
+import type { CreditRegimeSnapshot, RiskLevel } from "../../screen/credit_regime/types.js";
 
 export interface PayloadCandidateInput {
   symbol: string;
   securityName: string;
   profile: ProfileName;
   speculative: boolean;
+  /** TASK_CARD_08 Part A: baseline from `speculative`, bumped one level when this run's credit regime is tight. */
+  riskLevel: RiskLevel;
   primaryBucket: string;
   primaryBucketScore: number;
   allBucketsHit: string[];
@@ -32,6 +35,9 @@ export interface PayloadInput {
     gatesPassedCount: number;
   };
   marketRegime: MarketRegimeSnapshot;
+  /** TASK_CARD_08 Part A. */
+  creditRegime: CreditRegimeSnapshot;
+  smallSpecForcedDisabled: boolean;
   sectorFootprints: SectorFootprint[];
   /** TASK_CARD_07 Part A: all 11 SPDR sectors, ranked by this week's return. */
   sectorFlowScan: SectorFlowEntry[];

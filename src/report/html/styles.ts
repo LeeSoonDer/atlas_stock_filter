@@ -46,6 +46,12 @@ a{color:inherit;text-decoration:none}
 .brand{font-size:22px;font-weight:800;letter-spacing:3px}.brand span{color:var(--accent)}
 .meta{text-align:right;font-size:11.5px;color:var(--text-2)}.meta b{color:var(--text)}
 
+/* ===== TASK_CARD_08 Part A: credit-tight warning bar (rendered only when creditRegime.label === "tight") ===== */
+.credit-warning-bar{max-width:1180px;margin:0 auto;padding:10px 32px;background:color-mix(in srgb, var(--neg) 14%, transparent);border-bottom:1px solid var(--neg);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.credit-warning-label{color:var(--neg);font-weight:700;font-size:13px}
+.credit-warning-detail{color:var(--text-2);font-size:12px}
+.credit-unknown-note{max-width:1180px;margin:0 auto;padding:6px 32px;color:var(--text-muted);font-size:11.5px;font-style:italic;border-bottom:1px solid var(--border-dim)}
+
 /* ===== stratum head (repeated at the top of every numbered layer) ===== */
 .stratum{padding-top:40px}
 .stratum:first-of-type{padding-top:32px}

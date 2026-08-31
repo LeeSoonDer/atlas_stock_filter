@@ -273,6 +273,88 @@
     amend" convention - the actual code content was already functionally
     verified as correct.
 
+- Report HTML rebuilt as a five-layer information architecture ("信息分层版
+  v2", per claude_code_design_draft.md, a project-owner-supplied spec
+  superseding TASK_CARD_07 Part C's single-density look). DONE, committed
+  (2de1cc2) - this work existed uncommitted in the working tree when this
+  session started (from an earlier session); verified clean (npx tsc
+  --noEmit + 157/157 tests passing) before committing, no scope changes
+  made to it. Five numbered strata (01值得研究/02候选明细/03观察哨/04证据层/
+  05流程与账本) replace the prior uniform stack. Two new deterministic
+  derived fields support it: footprintDetail (per-condition detector
+  comparisons, previously computed but discarded - src/screen/detectors/
+  IDetector.ts's new conditions field) and footprintStrength (hit-ratio,
+  config-driven bands in card05.json's new footprintStrengthBands key -
+  src/report/footprint/footprintStrength.ts). Candidate display order now
+  sorts by footprintStrength.ratio (selection logic itself untouched).
+  scripts/preview-report.ts added: re-renders report.html from a saved
+  screen_run.json + checkpoint.json with zero network calls, for fast
+  presentation-layer-only iteration.
+- atlas_bootstrap_final upgrade package merged into the repo: constitution/
+  ATLAS_AMENDMENT_NO5_SIGNAL_REFINEMENT.md, cards/TASK_CARD_08.md,
+  cards/TASK_CARD_09_STANDBY.md, ATLAS_METHODOLOGY.md,
+  UPGRADE_DEPLOYMENT_GUIDE.md added (committed b558971). Every other file
+  in the package (constitution/ATLAS_v1_0.md, Amendments 2-4, Memos 3-4,
+  cards 01-07, MOCKUP_intel_briefing_v4.html) was byte-identical to what
+  was already in this repo - confirmed no-op, not restaged.
+- TASK_CARD_08 - "防御闸" (credit-regime circuit breaker + minimum price
+  gate), constitution Amendment No.5 修正案十四/十七. DONE. The upgrade
+  guide's own batch schedule (UPGRADE_DEPLOYMENT_GUIDE.md) puts this card
+  first ("批次一 - 现在就做") and TASK_CARD_09 last (needs a 3-4 cycle
+  baseline first, not yet accumulated - see Next Priorities) - only CARD
+  08 was executed this round.
+  - Part A (src/data/fred/ + src/screen/credit_regime/): new FRED client
+    fetching BAMLH0A0HYM2 (ICE BofA US HY OAS), degrades to null on any
+    failure/missing key (never throws/blocks). computeCreditRegime()
+    classifies loose/neutral/tight/unknown per the amendment's literal
+    thresholds (350bp/450bp/50bp-divergent-widening/10-trading-day
+    lookback, config/credit.json) - tight is checked before loose since
+    the amendment's OR condition treats rapid widening as tight
+    regardless of absolute level (disclosed interpretation, tested).
+    pipeline.ts fetches this once per run (independent of --profile,
+    before the profile gate) and force-disables SMALL_SPEC when tight
+    regardless of what --profile requested (shouldForceDisableSmallSpec(),
+    extracted as a pure function specifically so the DONE-WHEN's
+    "hand-construct a tight state test" requirement didn't depend on a
+    real FRED key). New risk_level ladder (normal/elevated/high) - no
+    such concept existed before this card - baseline from a candidate's
+    existing speculative flag, bumped one level when credit is tight.
+  - Part B (config/profiles.json's new minPrice field, STANDARD=$5/
+    SMALL_SPEC=$1): folded into pipeline.ts's existing evaluateProfileGate
+    (now exported for testability) alongside the pre-existing market-cap/
+    dollar-volume gate. Missing price data excludes rather than assumes
+    pass.
+  - 32 new unit tests (157->189, all green, tsc clean), including the
+    DONE-WHEN's explicit "2020年3月历史值人工验证" case - built from two
+    WebSearch-verified real anchor values (~360bp mid-Feb 2020, ~1087bp
+    on 2020-03-23) rather than from memory, since no FRED_API_KEY is
+    configured in this environment to verify live.
+  - Live-validated on real production data (npm run screen -- --profile
+    both, 17.4min, 3177 gate-passed, 0 fetch failures): creditRegime
+    correctly came back {label:"unknown", labelUnavailableReason:"..."}
+    (no FRED_API_KEY configured here - circuit breaker degraded cleanly,
+    run was not blocked). Programmatic spot-check of all 3177 gate-passed
+    symbols' regularMarketPrice against their profile's minPrice found
+    zero violations (lowest passing price: $1.055, a SMALL_SPEC symbol
+    just above its $1 floor).
+  - Operational note (same "stale module" class of issue as TASK_CARD_07's
+    validation run): edited renderReport.ts (added an unknown-state
+    "信用数据不可得" note - the circuit-breaker rule requires the report,
+    not just the payload, to flag unavailable credit data) WHILE the
+    validation run's Node process was already running - the already-
+    loaded module didn't pick up the edit, so that run's report.html was
+    missing the note. Caught by grepping the real output; fixed by
+    re-rendering via scripts/preview-report.ts (updated to also read the
+    new creditRegime/smallSpecForcedDisabled/riskLevel fields) against the
+    same real screen_run.json with the final code, diffed against the
+    stale version (identical except the missing note + one sparkline's
+    sub-pixel coordinate shift from checkpoint.json being incrementally
+    written during the 17-minute run), then used to overwrite
+    output/runs/2026-08-31/report.html and output/latest.html. See
+    ai/decisions.md for the full note - don't edit a module a long-running
+    `npm run screen` process has already imported; either wait for it to
+    finish or re-render via preview-report.ts afterward.
+
 ## In Progress
 - Nothing active. Awaiting the project owner's next instruction.
 
@@ -303,16 +385,35 @@
    ever show consistently low coverage (many tickers not found in the
    gate-passed universe across repeated runs), revisit the basket
    composition - see ai/decisions.md's disclosure entry.
-6. Post-v1 roadmap (all optional, none required, none should be
+6. If the user ever wants the credit-regime circuit breaker (TASK_CARD_08
+   Part A) actually live rather than perpetually "unknown", set
+   FRED_API_KEY in .env (see .env.example, free key at fred.stlouisfed.org)
+   - no code change needed, but the first live run's response shape
+   should be spot-checked against the WebSearch-verified (not
+   live-verified) parsing in src/data/fred/fredClient.ts.
+7. TASK_CARD_09 (cards/TASK_CARD_09_STANDBY.md - 隐性吸筹复合信号 + 期权情报
+   + 质量旗标) is loaded into the repo but explicitly NOT to be started
+   until at least 3-4 full production cycles (screen -> Radar -> 红队 ->
+   裁决 -> 账本) have run as a baseline - per the card's own stated reason
+   (signal-quality changes need a baseline to judge against, or overfitting
+   risk). As of this writing zero such cycles have completed (same gap as
+   Next Priority item 1 above - no real Radar/红队 pass has ever happened).
+   Do not start CARD 09 without the project owner explicitly confirming
+   the baseline condition is met.
+8. Post-v1 roadmap (all optional, none required, none should be
    started without the project owner explicitly requesting that
    specific card - see cards/TASK_CARD_06_AND_ROADMAP.md; note the
-   "CARD 07" slot there is stale/superseded, see above):
+   "CARD 07" AND "CARD 08" slots there are both stale/superseded - the
+   real TASK_CARD_07 (theme radar) and TASK_CARD_08 (credit regime +
+   price gate, this session) are unrelated cards from
+   atlas_bootstrap_final, already done - see above):
    - CARD 04b - EDGAR 13F incremental parsing. Trigger: institutional
      bucket proves its value in the forward ledger AND Form 4 proxy
      proves insufficient.
-   - CARD 08 - MCP thin proxy (build_atlas_payload/save_brief/
-     save_dissent tools). Trigger: manual copy-paste friction starts
-     causing the user to skip the red-team step.
+   - "MCP thin proxy" idea (build_atlas_payload/save_brief/save_dissent
+     tools) - the roadmap doc's original CARD 08 slot, renumbering TBD
+     if still wanted. Trigger: manual copy-paste friction starts causing
+     the user to skip the red-team step.
    - Independent parallel line - Cockpit v1.3 反哺 patch (ACH dual-
      hypothesis etc.) - explicitly NOT an Atlas task, separate session/
      task card only.

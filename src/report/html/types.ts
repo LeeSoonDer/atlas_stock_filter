@@ -6,6 +6,7 @@ import type { ScreeningLedgerEntry } from "../../ledger/types.js";
 import type { FmpEnrichmentResult } from "../../data/enrich/types.js";
 import type { FootprintCondition } from "../../screen/detectors/IDetector.js";
 import type { FootprintStrength } from "../footprint/footprintStrength.js";
+import type { CreditRegimeSnapshot } from "../../screen/credit_regime/types.js";
 
 export interface HtmlReportCandidateInput extends PayloadCandidateInput {
   closes90d: number[];
@@ -88,6 +89,9 @@ export interface ReportInput {
     detectorSummary: Record<string, { triggeredCount: number }>;
   };
   marketRegime: MarketRegimeSnapshot;
+  /** TASK_CARD_08 Part A. */
+  creditRegime: CreditRegimeSnapshot;
+  smallSpecForcedDisabled: boolean;
   sectorFootprints: SectorFootprint[];
   /** TASK_CARD_07 Part A/C: all 11 SPDR sectors, ranked by this week's return. */
   sectorFlowScan: SectorFlowEntry[];

@@ -17,6 +17,7 @@ import type { DetectorsConfig } from "../src/screen/indicators/types.js";
 import type { SelectConfig } from "../src/screen/select/types.js";
 import { allDetectors } from "../src/screen/detectors/index.js";
 import { computeFootprintStrength, mergeFootprintDetail } from "../src/report/footprint/footprintStrength.js";
+import { computeRiskLevel } from "../src/screen/credit_regime/types.js";
 import detectorsConfigJson from "../config/detectors.json" with { type: "json" };
 import card04ConfigJson from "../config/card04.json" with { type: "json" };
 import card05ConfigJson from "../config/card05.json" with { type: "json" };
@@ -67,6 +68,8 @@ function footprintFor(symbol: string, buckets: string[]) {
   return { detail, strength };
 }
 
+const creditRegimeTight = run.runMeta.creditRegime?.label === "tight";
+
 const htmlCandidates: HtmlReportCandidateInput[] = run.selection.candidates
   .map((c: any) => {
     const s = symbolsByTicker.get(c.symbol);
@@ -76,6 +79,7 @@ const htmlCandidates: HtmlReportCandidateInput[] = run.selection.candidates
       securityName: s?.securityName ?? c.symbol,
       profile: s?.profile ?? "STANDARD",
       speculative: s?.speculative ?? false,
+      riskLevel: computeRiskLevel(s?.speculative ?? false, creditRegimeTight),
       primaryBucket: c.primaryBucket,
       primaryBucketScore: c.primaryBucketScore,
       allBucketsHit: c.allBucketsHit,
@@ -119,6 +123,8 @@ const reportInput: ReportInput = {
     detectorSummary: run.runMeta.detectorSummary,
   },
   marketRegime: run.runMeta.marketRegime,
+  creditRegime: run.runMeta.creditRegime,
+  smallSpecForcedDisabled: run.runMeta.smallSpecForcedDisabled,
   sectorFootprints: run.runMeta.sectorFootprints,
   sectorFlowScan: run.runMeta.sectorFlowScan,
   hotSectorDetail: run.runMeta.hotSectorDetail,

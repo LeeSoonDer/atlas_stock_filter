@@ -26,6 +26,7 @@ function candidate(overrides: Partial<PayloadCandidateInput> = {}): PayloadCandi
     securityName: "Apple Inc.",
     profile: "STANDARD",
     speculative: false,
+    riskLevel: "normal",
     primaryBucket: "momentum_breakout",
     primaryBucketScore: 85,
     allBucketsHit: ["momentum_breakout"],
@@ -49,6 +50,12 @@ const baseInput: PayloadInput = {
     leadingSectors: [], laggingSectors: [],
     label: "顺风", labelUnavailableReason: null,
   },
+  creditRegime: {
+    asOf: "2026-08-24T00:00:00Z",
+    oasCurrentBp: 320, oasPastBp: 340, oasChangeBp: -20,
+    label: "loose", labelUnavailableReason: null,
+  },
+  smallSpecForcedDisabled: false,
   sectorFootprints: [],
   sectorFlowScan: [],
   hotSectorDetail: [],
@@ -122,6 +129,30 @@ test("sector_flow_scan section lists sectors sorted by rank with weekly return, 
   assert.ok(flowSection.includes("2.30%")); // weeklyReturn formatted as a percentage
   assert.ok(flowSection.includes("流入"));
   assert.ok(flowSection.includes("流出"));
+});
+
+test("TASK_CARD_08 Part A: credit_regime label and OAS figures appear in the environment snapshot", () => {
+  const input: PayloadInput = {
+    ...baseInput,
+    creditRegime: { asOf: "t", oasCurrentBp: 470, oasPastBp: 400, oasChangeBp: 70, label: "tight", labelUnavailableReason: null },
+  };
+  const output = generateAtlasPayload(input);
+  assert.ok(output.includes("credit_regime"));
+  assert.ok(output.includes("收紧"));
+  assert.ok(output.includes("470"));
+});
+
+test("TASK_CARD_08 Part A: smallSpecForcedDisabled renders an explicit warning line", () => {
+  const input: PayloadInput = { ...baseInput, smallSpecForcedDisabled: true };
+  const output = generateAtlasPayload(input);
+  assert.ok(output.includes("SMALL_SPEC"));
+  assert.ok(output.includes("强制禁用"));
+});
+
+test("TASK_CARD_08 Part A: candidate line includes risk_level", () => {
+  const input: PayloadInput = { ...baseInput, candidates: [candidate({ riskLevel: "high" })] };
+  const output = generateAtlasPayload(input);
+  assert.ok(output.includes("risk_level: high"));
 });
 
 test("hot sector detail: basket entries disclose coverage; sector entries do not", () => {

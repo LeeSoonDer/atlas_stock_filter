@@ -65,6 +65,11 @@ import type { BasketTickerStat, CandidateSectorInfo } from "./sector_scan/index.
 import type { HotSectorEntry, HotSectorsConfig, SectorFlowConfig, SectorFlowEntry } from "./sector_scan/types.js";
 import card07ConfigJson from "../../config/card07.json" with { type: "json" };
 import hotSectorsConfigJson from "../../config/hot_sectors.json" with { type: "json" };
+import creditConfigJson from "../../config/credit.json" with { type: "json" };
+import { fetchFredSeries } from "../data/fred/fredClient.js";
+import { computeCreditRegime } from "./credit_regime/computeCreditRegime.js";
+import { computeRiskLevel } from "./credit_regime/types.js";
+import type { CreditRegimeConfig, CreditRegimeSnapshot } from "./credit_regime/types.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
@@ -80,6 +85,8 @@ const sectorFootprintConfig = sectorFootprintConfigJson as FootprintConfig;
 const card05Config = card05ConfigJson as SelectConfig & FmpConfig;
 const card07Config = card07ConfigJson as SectorFlowConfig;
 const hotSectorsConfig = hotSectorsConfigJson as HotSectorsConfig;
+const creditConfig = creditConfigJson as CreditRegimeConfig;
+const FRED_HY_OAS_SERIES_ID = "BAMLH0A0HYM2";
 
 /**
  * TASK_CARD_06 SCOPE 2: maps each named pipeline segment (marked via
@@ -90,6 +97,7 @@ const hotSectorsConfig = hotSectorsConfigJson as HotSectorsConfig;
  */
 const PHASE_CATEGORY: Record<string, "universe" | "fetch" | "detect" | "report"> = {
   universe: "universe",
+  fetch_credit_regime: "fetch",
   fetch_quote: "fetch",
   fetch_enrichment: "fetch",
   fetch_insiders_index: "fetch",
@@ -153,19 +161,40 @@ async function fetchMarketContext(): Promise<{ sectorRankings: SectorRanking[]; 
   return { sectorRankings, marketRegime, sectorReturns };
 }
 
-function evaluateProfileGate(
+/**
+ * TASK_CARD_08 Part A: reads FRED's high-yield OAS series once per run,
+ * independent of --profile. Never throws - a missing key or failed request
+ * degrades to `label: "unknown"` and the run proceeds unblocked, per the
+ * card's own circuit-breaker rule.
+ */
+export async function fetchCreditRegimeSnapshot(): Promise<CreditRegimeSnapshot> {
+  const observations = await fetchFredSeries(FRED_HY_OAS_SERIES_ID, process.env.FRED_API_KEY);
+  return computeCreditRegime(observations, creditConfig);
+}
+
+export function evaluateProfileGate(
   quote: QuoteSlice,
   config: ProfilesConfig,
 ): { profile: ProfileName; speculative: boolean } | null {
-  const { marketCap, avgDollarVolume: adv } = quote;
-  if (marketCap === undefined || adv === undefined) return null;
+  const { marketCap, avgDollarVolume: adv, regularMarketPrice: price } = quote;
+  if (marketCap === undefined || adv === undefined || price === undefined) return null;
 
   const std = config.STANDARD;
-  if (marketCap >= std.minMarketCap && (std.maxMarketCap === null || marketCap <= std.maxMarketCap) && adv >= std.minAvgDollarVolume) {
+  if (
+    marketCap >= std.minMarketCap &&
+    (std.maxMarketCap === null || marketCap <= std.maxMarketCap) &&
+    adv >= std.minAvgDollarVolume &&
+    price >= std.minPrice
+  ) {
     return { profile: "STANDARD", speculative: std.speculative };
   }
   const spec = config.SMALL_SPEC;
-  if (marketCap >= spec.minMarketCap && (spec.maxMarketCap === null || marketCap <= spec.maxMarketCap) && adv >= spec.minAvgDollarVolume) {
+  if (
+    marketCap >= spec.minMarketCap &&
+    (spec.maxMarketCap === null || marketCap <= spec.maxMarketCap) &&
+    adv >= spec.minAvgDollarVolume &&
+    price >= spec.minPrice
+  ) {
     return { profile: "SMALL_SPEC", speculative: spec.speculative };
   }
   return null;
@@ -174,6 +203,16 @@ function evaluateProfileGate(
 function requestedProfiles(arg: ProfileArg): ProfileName[] {
   if (arg === "both") return ["STANDARD", "SMALL_SPEC"];
   return arg === "standard" ? ["STANDARD"] : ["SMALL_SPEC"];
+}
+
+/**
+ * TASK_CARD_08 Part A DONE-WHEN: "人工构造tight状态测试:SMALL_SPEC确实被禁用".
+ * Extracted as a pure function specifically so that construction can be a
+ * real unit test rather than only exercised by a live run (which cannot
+ * reach `label: "tight"` in this environment - no FRED_API_KEY configured).
+ */
+export function shouldForceDisableSmallSpec(requested: Set<ProfileName>, creditRegimeLabel: CreditRegimeSnapshot["label"]): boolean {
+  return creditRegimeLabel === "tight" && requested.has("SMALL_SPEC");
 }
 
 export interface ScreenOutputSymbol {
@@ -240,6 +279,10 @@ export interface ScreenRunResult {
     /** TASK_CARD_03 SCOPE 2/3. */
     sectorRankings: SectorRanking[];
     marketRegime: MarketRegimeSnapshot;
+    /** TASK_CARD_08 Part A. */
+    creditRegime: CreditRegimeSnapshot;
+    /** TASK_CARD_08 Part A: true only when --profile requested SMALL_SPEC AND credit regime is tight this run. */
+    smallSpecForcedDisabled: boolean;
     /** TASK_CARD_04. */
     insiders: {
       daysScanned: number;
@@ -327,12 +370,31 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const checkpoint = loadCheckpoint(CHECKPOINT_PATH, "ATLAS_UNIVERSE");
   const allSymbols = universe.map((u) => u.symbol);
 
+  console.error(`[screen] Phase credit regime: checking FRED high-yield OAS (${FRED_HY_OAS_SERIES_ID})...`);
+  const creditRegime = await fetchCreditRegimeSnapshot();
+  console.error(
+    `[screen] Phase credit regime done: label=${creditRegime.label}${creditRegime.labelUnavailableReason ? ` (${creditRegime.labelUnavailableReason})` : ""}`,
+  );
+  mark("fetch_credit_regime");
+
   console.error(`[screen] Phase A: quote fetch for ${allSymbols.length} symbols...`);
   await runQuotePhase(allSymbols, checkpoint, CHECKPOINT_PATH);
   console.error(`[screen] Phase A done: ${Object.keys(checkpoint.quoteResults).length} fetched, ${checkpoint.quoteFailures.length} failed`);
   mark("fetch_quote");
 
-  const wanted = new Set(requestedProfiles(profileArg));
+  const requestedProfileSet = new Set(requestedProfiles(profileArg));
+  // TASK_CARD_08 Part A / Amendment No.5 修正案十四: credit-tight forces
+  // SMALL_SPEC off this run regardless of what --profile asked for. This is
+  // the circuit breaker's one behavior-changing effect - everything else
+  // about this card is additive (new fields, no altered gate/bucket logic).
+  const smallSpecForcedDisabled = shouldForceDisableSmallSpec(requestedProfileSet, creditRegime.label);
+  if (smallSpecForcedDisabled) {
+    requestedProfileSet.delete("SMALL_SPEC");
+    console.error(
+      `[screen] Phase credit regime: SMALL_SPEC forcibly disabled this run (credit regime=tight, OAS=${creditRegime.oasCurrentBp}bp) - see report/payload credit_regime section for detail`,
+    );
+  }
+  const wanted = requestedProfileSet;
   const universeBySymbol = new Map(universe.map((u) => [u.symbol, u]));
 
   const gatePassed: Array<{ symbol: string; profile: ProfileName; speculative: boolean; quote: QuoteSlice }> = [];
@@ -629,6 +691,9 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       securityName: s.securityName,
       profile: s.profile,
       speculative: s.speculative,
+      // TASK_CARD_08 Part A: baseline from the candidate's own speculative
+      // flag, bumped one level when this run's credit regime is tight.
+      riskLevel: computeRiskLevel(s.speculative, creditRegime.label === "tight"),
       primaryBucket: c.primaryBucket,
       primaryBucketScore: c.primaryBucketScore,
       allBucketsHit: c.allBucketsHit,
@@ -677,6 +742,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const atlasPayloadText = generateAtlasPayload({
     runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length },
     marketRegime,
+    creditRegime,
+    smallSpecForcedDisabled,
     sectorFootprints,
     sectorFlowScan,
     hotSectorDetail,
@@ -711,6 +778,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const htmlReportText = renderReport({
     runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length, detectorSummary },
     marketRegime,
+    creditRegime,
+    smallSpecForcedDisabled,
     sectorFootprints,
     sectorFlowScan,
     hotSectorDetail,
@@ -833,6 +902,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       fundamentalsFetchFailures: checkpoint.fundamentalsFailures,
       sectorRankings,
       marketRegime,
+      creditRegime,
+      smallSpecForcedDisabled,
       insiders: {
         daysScanned: Object.keys(checkpoint.insiderDailyIndexCache).length,
         relevantFilingsFound: Object.values(checkpoint.insiderDailyIndexCache).reduce((a, f) => a + f.length, 0),

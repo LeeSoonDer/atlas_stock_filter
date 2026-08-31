@@ -38,6 +38,7 @@ function candidate(overrides: Partial<HtmlReportCandidateInput> = {}): HtmlRepor
     securityName: "Test & Co.",
     profile: "SMALL_SPEC",
     speculative: true,
+    riskLevel: "elevated",
     primaryBucket: "oversold_reversal",
     primaryBucketScore: 80,
     allBucketsHit: ["oversold_reversal"],
@@ -91,6 +92,10 @@ const baseInput: ReportInput = {
     asOf: "t", spyLatestClose: 500, spySma200: 480, spyCloseVsSma200: "above", spySma200Slope: 1,
     vixCurrent: 15, vixAvg20: 16, leadingSectors: [], laggingSectors: [], label: "顺风", labelUnavailableReason: null,
   },
+  creditRegime: {
+    asOf: "t", oasCurrentBp: 320, oasPastBp: 340, oasChangeBp: -20, label: "loose", labelUnavailableReason: null,
+  },
+  smallSpecForcedDisabled: false,
   sectorFootprints: [],
   sectorFlowScan: flowScan,
   hotSectorDetail: hotSectors,
@@ -232,6 +237,44 @@ test("promoted marker and event_window appear on the tier1 candidate card", () =
   const html = renderReport(baseInput);
   assert.ok(html.includes("观察哨升级而来"));
   assert.ok(html.includes("⚡"));
+});
+
+test("TASK_CARD_08 Part A: credit regime loose/neutral (default fixture) -> no warning bar content rendered", () => {
+  const html = renderReport(baseInput);
+  assert.ok(!html.includes('<div class="credit-warning-bar">'));
+  assert.ok(!html.includes("信用环境收紧"));
+});
+
+test("TASK_CARD_08 熔断: credit regime unknown (no FRED key / fetch failed) -> muted 不可得 note renders, not the alarming bar", () => {
+  const input: ReportInput = {
+    ...baseInput,
+    creditRegime: { asOf: "t", oasCurrentBp: null, oasPastBp: null, oasChangeBp: null, label: "unknown", labelUnavailableReason: "FRED OAS series unavailable this run (FRED_API_KEY unset or the request failed)" },
+  };
+  const html = renderReport(input);
+  assert.ok(html.includes('<div class="credit-unknown-note">'));
+  assert.ok(html.includes("信用环境: 不可得"));
+  assert.ok(!html.includes('<div class="credit-warning-bar">'));
+});
+
+test("TASK_CARD_08 Part A: credit regime tight -> warning bar with OAS figures renders", () => {
+  const input: ReportInput = {
+    ...baseInput,
+    creditRegime: { asOf: "t", oasCurrentBp: 470, oasPastBp: 400, oasChangeBp: 70, label: "tight", labelUnavailableReason: null },
+    smallSpecForcedDisabled: true,
+  };
+  const html = renderReport(input);
+  assert.ok(html.includes('<div class="credit-warning-bar">'));
+  assert.ok(html.includes("信用环境收紧"));
+  assert.ok(html.includes("470"));
+  assert.ok(html.includes("SMALL_SPEC 档本次运行已强制禁用"));
+});
+
+test("TASK_CARD_08 Part A: candidate riskLevel normal shows no badge; elevated/high show a labeled badge", () => {
+  const normalHtml = renderReport({ ...baseInput, candidates: [candidate({ riskLevel: "normal", speculative: false })] });
+  assert.ok(!normalHtml.includes("风险等级"));
+
+  const highHtml = renderReport({ ...baseInput, candidates: [candidate({ riskLevel: "high" })] });
+  assert.ok(highHtml.includes("风险等级: 高"));
 });
 
 test("empty tier2 watchlist renders an explicit empty statement, not a blank table", () => {

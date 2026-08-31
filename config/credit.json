@@ -1,0 +1,8 @@
+{
+  "creditRegime": {
+    "looseMaxBp": 350,
+    "tightMinBp": 450,
+    "divergentWideningBp": 50,
+    "lookbackTradingDays": 10
+  }
+}

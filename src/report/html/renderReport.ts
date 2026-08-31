@@ -68,6 +68,34 @@ function renderMasthead(input: ReportInput): string {
 </div>`;
 }
 
+const RISK_LABEL: Record<string, string> = { normal: "正常", elevated: "偏高", high: "高" };
+
+/**
+ * TASK_CARD_08 熔断: "FRED序列取数失败时降级为unknown态并正常运行(不阻塞),
+ * 但报告需标注信用数据不可得" - so an `unknown` regime still needs a visible
+ * (muted, non-alarming) note even though it triggers none of the tight-state
+ * behavior. Renders nothing for loose/neutral - a normal run's markup is
+ * unaffected either way.
+ */
+function renderCreditWarning(input: ReportInput): string {
+  const cr = input.creditRegime;
+  if (cr.label === "tight") {
+    const disabledNote = input.smallSpecForcedDisabled
+      ? "SMALL_SPEC 档本次运行已强制禁用 · 全部候选风险等级已上调一级"
+      : "全部候选风险等级已上调一级";
+    return `
+<div class="credit-warning-bar">
+  <span class="credit-warning-label">⚠ 信用环境收紧</span>
+  <span class="credit-warning-detail">OAS=${fmt(cr.oasCurrentBp)}bp(两周前=${fmt(cr.oasPastBp)}bp, 变动=${fmt(cr.oasChangeBp)}bp) · ${escapeHtml(disabledNote)}</span>
+</div>`;
+  }
+  if (cr.label === "unknown") {
+    return `
+<div class="credit-unknown-note">信用环境: 不可得${cr.labelUnavailableReason ? ` (${escapeHtml(cr.labelUnavailableReason)})` : ""}</div>`;
+  }
+  return "";
+}
+
 function totalBucketHits(detectorSummary: Record<string, { triggeredCount: number }>): number {
   return Object.values(detectorSummary).reduce((a, v) => a + v.triggeredCount, 0);
 }
@@ -164,6 +192,7 @@ function renderCandidateCard(c: HtmlReportCandidateInput, index: number, default
     c.eventWindow && c.eventWindow.length > 0 ? `⚡ ${escapeHtml(c.eventWindow[0].type)} ${escapeHtml(c.eventWindow[0].date)}` : "",
     c.promoted ? `<span class="up">观察哨升级而来</span>` : "",
     c.speculative ? `<span class="tier-warn">SMALL_SPEC</span>` : "",
+    c.riskLevel !== "normal" ? `<span class="tier-warn">风险等级: ${RISK_LABEL[c.riskLevel]}</span>` : "",
   ].filter(Boolean);
 
   const hitCount = c.footprintDetail.filter((d) => d.status === "hit").length;
@@ -505,6 +534,7 @@ export function renderReport(input: ReportInput): string {
 <body data-project="atlas">
 <a id="top"></a>
 ${renderMasthead(input)}
+${renderCreditWarning(input)}
 <div class="wrap">
 ${render01(input)}
 ${render02(input)}
