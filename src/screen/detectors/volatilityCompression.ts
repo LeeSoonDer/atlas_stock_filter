@@ -1,5 +1,6 @@
 import type { IDetector, DetectorResult, FootprintCondition } from "./IDetector.js";
 import type { IndicatorFlags, DetectorsConfig } from "../indicators/types.js";
+import { applyLatentAccumulationBonus } from "./latentAccumulationBonus.js";
 
 const DETECTOR_ID = "volatility_compression_setup";
 
@@ -110,7 +111,11 @@ export const volatilityCompressionDetector: IDetector = {
     const marginSqueeze = 1 - bbWidthPercentile120 / 100;
     const marginProximity = pctOf52WeekHigh;
     const marginContraction = Math.max(0, 1 - volumeAvg20 / volumeAvg50);
-    const strengthScore = ((marginSqueeze + marginProximity + marginContraction) / 3) * 100;
+    const baseScore = ((marginSqueeze + marginProximity + marginContraction) / 3) * 100;
+    // TASK_CARD_09 Part A / 修正案十五: rsLineNewHigh + volumeDryup (末端
+    // 干涸) + aboveVwapStreak all apply to this bucket - see
+    // latentAccumulationBonus.ts. Bonus-only: never affects `triggered` above.
+    const strengthScore = applyLatentAccumulationBonus(baseScore, [flags.rsLineNewHigh, flags.volumeDryup, flags.aboveVwapStreak], config.latentAccumulation.strengthBonusPerFlag);
 
     return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence, conditions };
   },

@@ -1,5 +1,6 @@
 import type { IDetector, DetectorResult, FootprintCondition } from "./IDetector.js";
 import type { IndicatorFlags, DetectorsConfig } from "../indicators/types.js";
+import { applyLatentAccumulationBonus } from "./latentAccumulationBonus.js";
 
 /**
  * Detector A - Momentum Breakout (TASK_CARD_02 SCOPE 2). All four
@@ -98,7 +99,11 @@ export const momentumBreakoutDetector: IDetector = {
     const marginProximity = pctOf52WeekHigh;
     const marginVolume = Math.min(maxVolumeRatioLast5Days / c.volumeRatioThreshold, 3) / 3;
     const marginRs = rs6MonthPercentile / 100;
-    const strengthScore = ((marginProximity + marginVolume + marginRs) / 3) * 100;
+    const baseScore = ((marginProximity + marginVolume + marginRs) / 3) * 100;
+    // TASK_CARD_09 Part A / 修正案十五: rsLineNewHigh applies to momentum +
+    // compression, aboveVwapStreak applies to all four buckets - see
+    // latentAccumulationBonus.ts. Bonus-only: never affects `triggered` above.
+    const strengthScore = applyLatentAccumulationBonus(baseScore, [flags.rsLineNewHigh, flags.aboveVwapStreak], config.latentAccumulation.strengthBonusPerFlag);
 
     return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence, conditions };
   },

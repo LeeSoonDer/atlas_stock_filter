@@ -1,5 +1,5 @@
 import type { OHLCVBar } from "../../data/types.js";
-import type { DetectorsConfig, IndicatorFlags } from "./types.js";
+import type { DetectorsConfig, IndicatorFlags, LatentAccumulationConfig } from "./types.js";
 import { cleanBars } from "./series.js";
 import { sma } from "./sma.js";
 import { rsi } from "./rsi.js";
@@ -10,17 +10,23 @@ import { obvSeries, obvSlope } from "./obv.js";
 import { bollingerWidthWithPercentile } from "./bollinger.js";
 import { sidewaysBaseDays } from "./sidewaysBase.js";
 import { trailingReturn } from "./relativeStrength.js";
+import { volumeDryup } from "./volumeDryup.js";
+import { aboveVwapStreak } from "./aboveVwapStreak.js";
 
 /**
- * Computes every single-symbol indicator (everything in IndicatorFlags
- * except rs3MonthPercentile/rs6MonthPercentile, which need cross-symbol
- * context and are filled in by the pipeline after this runs for every
- * symbol in the current screen run).
+ * Computes every single-symbol indicator except rs3MonthPercentile/
+ * rs6MonthPercentile (need a cross-symbol percentile pass after every
+ * symbol's own indicators are computed), rsLineNewHigh (needs SPY bars,
+ * filled in by the pipeline in the same per-symbol loop once SPY is
+ * fetched - not itself cross-symbol, just needs one shared external
+ * series fetched ahead of time), and insiderClusterWeightedScore
+ * (TASK_CARD_04-era institutional/insider fields, unchanged pattern).
  */
-export function computeIndicators(bars: OHLCVBar[], config: DetectorsConfig): IndicatorFlags {
+export function computeIndicators(bars: OHLCVBar[], config: DetectorsConfig, latentConfig: LatentAccumulationConfig): IndicatorFlags {
   const clean = cleanBars(bars);
   const closes = clean.map((b) => b.close);
   const ic = config.indicators;
+  const lc = latentConfig.latentAccumulation;
 
   const [sma20, sma50, sma200] = ic.smaWindows.map((w) => sma(closes, w));
   const latestClose = closes.length > 0 ? closes[closes.length - 1] : null;
@@ -77,5 +83,9 @@ export function computeIndicators(bars: OHLCVBar[], config: DetectorsConfig): In
     shortInterestPercentOfFloat: null,
     shortInterestLagDays: null,
     shortInterestAvailability: "不可得",
+    rsLineNewHigh: null,
+    volumeDryup: volumeDryup(clean, lc.volumeDryupLookbackDays, ic.volumeAvgWindowLong, lc.volumeDryupRatioThreshold),
+    aboveVwapStreak: aboveVwapStreak(clean, lc.aboveVwapStreakDays, lc.aboveVwapRollingWindow),
+    insiderClusterWeightedScore: null,
   };
 }

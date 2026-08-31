@@ -45,6 +45,21 @@ export interface IndicatorFlags {
   shortInterestPercentOfFloat: number | null;
   shortInterestLagDays: number | null;
   shortInterestAvailability: "可得" | "不可得";
+
+  /**
+   * TASK_CARD_09 Part A / 修正案十五: 隐性吸筹复合信号, all strength-add
+   * flags only - never a bucket admission condition (see each detector's
+   * own comment for where/how the bonus is applied). rsLineNewHigh needs
+   * SPY bars, which computeIndicators (a pure OHLCV-only function) never
+   * fetches - it is null there and filled in by the pipeline in the same
+   * per-symbol loop once SPY bars are fetched once, up front.
+   */
+  rsLineNewHigh: boolean | null;
+  volumeDryup: boolean | null;
+  /** Daily-bar APPROXIMATION of VWAP (typical price, volume-weighted rolling window) - never real intraday VWAP. See aboveVwapStreak.ts. */
+  aboveVwapStreak: boolean | null;
+  /** TASK_CARD_09 Part A: upgraded from headcount to weighted score - see src/data/insiders/insiderWeighting.ts. Same availability semantics as insiderCluster (null/不可得 = no qualifying filing this run, not "zero score"). */
+  insiderClusterWeightedScore: number | null;
 }
 
 export interface DetectorsConfig {
@@ -84,5 +99,21 @@ export interface DetectorsConfig {
     minConditionsRequired: number;
     shortInterestSignificantDeclinePercent: number;
     squeezeMinFloatPercent: number;
+  };
+  /** TASK_CARD_09 Part A: merged in at wire-up time from config/card09.json, same pattern as detectorD_institutionalAccumulation above - see pipeline.ts's combinedDetectorsConfig. */
+  latentAccumulation: {
+    strengthBonusPerFlag: number;
+  };
+}
+
+/** TASK_CARD_09 Part A. Reshaped from config/card09.json at wire-up time - see pipeline.ts. */
+export interface LatentAccumulationConfig {
+  latentAccumulation: {
+    rsLineTradingDays: number;
+    volumeDryupLookbackDays: number;
+    volumeDryupRatioThreshold: number;
+    aboveVwapStreakDays: number;
+    aboveVwapRollingWindow: number;
+    strengthBonusPerFlag: number;
   };
 }

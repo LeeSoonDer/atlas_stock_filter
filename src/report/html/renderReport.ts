@@ -4,6 +4,7 @@ import { REPORT_STYLES } from "./styles.js";
 import { bbPercentileLabel, institutionalTrendLabel, rsiLabel, smaAlignmentLabel, volumeRatioLabel, week52PositionLabel } from "./semanticLabels.js";
 import type { HotSectorEntry, SectorFlowEntry } from "../../screen/sector_scan/types.js";
 import type { FootprintCondition } from "../../screen/detectors/IDetector.js";
+import type { IndicatorFlags } from "../../screen/indicators/types.js";
 import type { HtmlReportCandidateInput, HtmlWatchlistInput, ReportInput } from "./types.js";
 
 const PLACEHOLDER = "待研究层填充";
@@ -231,6 +232,24 @@ function renderCandidateCard(c: HtmlReportCandidateInput, index: number, default
     <div class="cand-detail-title">构成足迹的条件 · ${hitCount} 项命中 / ${checkedCount} 项检查</div>
     ${c.footprintDetail.map(renderConditionRow).join("")}
     <div class="cand-detail-foot">不可得项不参与强度计分,也不计入分母。每一条均可在本次 run 的 screen_run.json 中按 symbol 溯源。</div>
+    ${renderLatentAccumulationRow(f)}
+  </div>
+</div>`;
+}
+
+/** TASK_CARD_09 Part A / 修正案十五: 隐性吸筹复合信号 - strength-bonus-only flags, never a bucket admission condition, kept visually separate from the footprintDetail table above (which IS admission-condition evidence) to avoid implying these gate anything. */
+function triState(v: boolean | null): string {
+  return v === null ? "不可得" : v ? "是" : "否";
+}
+function renderLatentAccumulationRow(f: IndicatorFlags): string {
+  return `
+<div class="cand-latent-row">
+  <div class="cand-latent-title">隐性吸筹复合信号(强度加分项,不参与桶准入判定)</div>
+  <div class="cand-latent-items">
+    <span>RS线创52周新高: ${triState(f.rsLineNewHigh)}</span>
+    <span>成交量极度干涸: ${triState(f.volumeDryup)}</span>
+    <span>均价位置持续偏上(日线近似VWAP,非真实分钟级): ${triState(f.aboveVwapStreak)}</span>
+    <span>内部人加权分: ${f.insiderClusterWeightedScore === null ? "不可得" : f.insiderClusterWeightedScore.toFixed(1)}</span>
   </div>
 </div>`;
 }

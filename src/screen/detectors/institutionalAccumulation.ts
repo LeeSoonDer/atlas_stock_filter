@@ -1,5 +1,6 @@
 import type { IDetector, DetectorResult, FootprintCondition } from "./IDetector.js";
 import type { IndicatorFlags, DetectorsConfig } from "../indicators/types.js";
+import { applyLatentAccumulationBonus } from "./latentAccumulationBonus.js";
 
 const DETECTOR_ID = "institutional_accumulation_proxy";
 
@@ -128,7 +129,10 @@ export const institutionalAccumulationDetector: IDetector = {
       return { detectorId: DETECTOR_ID, triggered: false, strengthScore: null, evidence, conditions: footprintConditions };
     }
 
-    const strengthScore = (conditionsMet / conditions.length) * 100;
+    const baseScore = (conditionsMet / conditions.length) * 100;
+    // TASK_CARD_09 Part A / 修正案十五: aboveVwapStreak applies to all four
+    // buckets - see latentAccumulationBonus.ts. Bonus-only: never affects `triggered` above.
+    const strengthScore = applyLatentAccumulationBonus(baseScore, [flags.aboveVwapStreak], config.latentAccumulation.strengthBonusPerFlag);
     return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence, conditions: footprintConditions };
   },
 };

@@ -416,3 +416,21 @@ Tradeoff: `renderCreditWarning()` 的字面卡片文本只提到"tight 时报告
 Future implications: 若未来想让某个用户在本地测试 tight 态的真实渲染效果(而不只是单元测试),现在 `computeCreditRegime`/`shouldForceDisableSmallSpec` 都是纯函数,可以直接手工构造观测序列调用,不需要真的等信用市场收紧。`config/credit.json` 的四个阈值(350/450/50bp/10个交易日)全部来自修正案十四原文数字,未做任何本地调整。
 
 Correction (commit message accuracy, caught while reviewing `git log` after committing): 上面 Part A/B 实现本身的 commit(`e7a2846`)message 末尾写了"Also commits: the atlas_bootstrap_final upgrade package..." - 这句不准确,那批 bootstrap 文件(修正案五、CARD 08/09 卡片、方法论/部署指南)实际是**前一个** commit(`b558971`)提交的,`e7a2846` 的 diff 里不含任何 `constitution/`/`cards/`/根目录文档改动(`git show --stat e7a2846 | grep` 确认零匹配)。代码本身没有问题,纯粹是 commit message 最后一句写错了归属 - 按本项目"宁可新开一条记录,不修改历史 commit"的既定原则(见 208fdaa 的先例),不 amend,这里补一条更正记录。
+
+## 2026-08-31 - TASK_CARD_09 启动(项目所有者明知基线条件未满足,仍要求现在启动) + Part A DONE
+
+Decision: CARD 09 是待命卡,卡片原文与部署指南都明确要求先跑满 3-4 个完整 screen→Radar→红队→裁决→账本 周期作为基线,本 repo 目前一次真实 Radar/红队闭环都还没跑过(与 Next Priorities #1 是同一个未闭合的缺口)。就此向项目所有者当面确认,对方明确选择"明知条件未满足,仍要求现在启动"而非等待或先跑一次真实闭环 - 记录在案作为项目所有者的知情决定,不是本次会话自行放宽纪律。因此从这里开始的 CARD 09 实现,其信号质量在真正跑够基线周期之前,项目所有者需自行承担"无法判断候选变好还是变坏"这个卡片自己写明的风险。
+
+**Part A - 隐性吸筹复合信号**(`src/screen/indicators/` 三个新纯函数 + `src/data/insiders/` 权重升级)DONE:
+
+1. `rsLineNewHigh`(`rsLineNewHigh.ts`):个股收盘/SPY收盘比值序列创52周新高,且个股自身价格未创新高。`ownPriceAtNewHigh` 由调用方传入(复用 `computeIndicators` 已算出的 `pctOf52WeekHigh`),不在此函数内重新计算价格窗口 - 单一事实来源,且自然继承 `week52()` 对历史不足标的的同一套宽松窗口惯例(不强制要求满 `tradingDays`)。SPY bars 是新增的、独立于 `fetchMarketContext()` 的早期专用抓取(`pipeline.ts` 的 `fetch_spy_rsline` 阶段,在 Phase indicators 之前),`fetchMarketContext()` 后续仍会为市场环境快照再抓一次 SPY - 两次抓取存在**已披露的重复**,为了不动 `fetchMarketContext()` 现有调用点(避免更大范围重构风险)接受的简化,而非疏漏。
+2. `volumeDryup`(`volumeDryup.ts`):镜像 `volume.ts` 现有 `maxVolumeRatioLastNDays` 的循环结构,找最小值而非最大值,复用现有 `volumeAvgWindowLong`(50日)而不是新增一个平行 config 键。
+3. `aboveVwapStreak`(`aboveVwapStreak.ts`):典型价 (H+L+C)/3 按成交量加权、滚动窗口(默认20日)算出的近似 VWAP,连续 N 日(默认5)收盘价高于**当日**滚动 VWAP。零成交量窗口视为"未站上"(false)而非跳过,因为"站上一个未定义的均价"本身不是能诚实断言的结论。字段命名与报告渲染文字均明确标注"日线近似,非真实分钟级 VWAP"。
+4. 内部人加权(`src/data/insiders/insiderWeighting.ts` + `aggregateInsiderClusters.ts` 重写):`form4Parser.ts` 新增对真实 `reportingOwnerRelationship` 块的解析(`isDirector`/`isOfficer`/`isTenPercentOwner`/`officerTitle`)- **live 验证,非记忆**:直接用 `secFetch` 重新抓取本次会话早些时候 CARD 08 验证时已缓存在 `output/checkpoint.json` 里的真实 accessionPath(AEIS 927003 的真实申报),确认了两个此前不知道的真实细节:布尔子标签在不同年代的申报里不一致地写成 `"1"/"0"` 或 `"true"/"false"`(两种都做了解析兼容),以及 `officerTitle` 是自由文本(真实样本含 "Co-Chief Executive Officer"、"Executive Vice President & CFO"),不是枚举值。职位权重按卡片字面三档(CEO/CFO/COO=2.0,其他高管=1.5,董事=1.0),标题匹配用大小写不敏感的子串正则,已用真实抓取的样本验证"Co-CEO"/"& CFO" 两种真实写法都能命中正确档位。金额显著性(单笔≥$100k ×1.5)判定用同一份申报里**金额最大**的一笔 P 交易(该简化解析器不把交易归属到具体某个申报人,联合申报里的多个申报人共享同一份交易列表,是已披露的解读选择,不是解析缺陷)。集群判定改为"每个不同买方的最高权重求和 ≥ `clusterMinWeightedScore`(默认2.0,与旧版"2人头"默认值刻意保持同一量级,便于历史可比)",同一人多次出现取其**最高**权重而非求和(避免小额反复交易刷分)。
+5. 应用到 strengthScore:新增共享辅助函数 `latentAccumulationBonus.ts`(避免 4 个探测器各自重复实现导致的漂移风险 - 这正是本 repo 此前 conditions/triggered 双表达式那次教训的直接应用),每个命中的旗标加 `config/card09.json` 里的 `strengthBonusPerFlag`(默认5分,封顶100)。`rs_line_new_high` 用于 A(动能突破)+B(波动挤压);`volume_dryup` 仅用于 B;`above_vwap_streak` 全4桶通用。**只改 `strengthScore`,`triggered` 判定表达式一个字符未动**(4 个探测器文件逐一 grep 确认)。
+
+Verification: 33 个新测试(211→219 之前那批已含 rsLineNewHigh/volumeDryup/aboveVwapStreak/insiderWeighting/Form4关系解析/bonus辅助函数的全部单测,加上本条新增的 Detector D bonus 集成测试与 HTML 渲染测试),`npx tsc --noEmit` clean。DONE-WHEN 明确要求的"RS线新高逻辑正确:构造测试数据验证'大盘跌个股平'能触发" - 有专项测试字面复现这个场景(SPY 连续下跌、个股走平,断言结果为 true)。
+
+Tradeoff: `insiderRoleWeight()` 对既非 officer 也非 director 的申报人(纯10%大股东或 isOther)落回 `directorWeight`(卡片三档里最低的一档),而不是新发明一个第4档 - 卡片原文没提这种情况,选最保守/最不臆造的处理。`officerTitle` 未做 HTML 实体解码(如 `&amp;`)- 只在子串匹配里用到,不影响 CEO/CFO/COO 判定的正确性,故未处理。
+
+Future implications: `insiderClusterWeightedScore` 是新字段,已进入 payload(全旗标转储自动带出)与 HTML 报告(候选详情卡的"隐性吸筹复合信号"行)。Part B(期权情报)与 Part C(质量与稀释旗标)按卡片"各Part相互独立"的许可,作为后续独立 commit 分别交付。

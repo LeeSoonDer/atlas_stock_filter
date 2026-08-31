@@ -18,6 +18,7 @@ const flags: IndicatorFlags = {
   institutionalTrend: "up", institutionalTrendAvailability: "可得",
   shortInterestChangePercent: -20, shortInterestDaysToCover: 1.5, shortInterestPercentOfFloat: 12,
   shortInterestLagDays: 20, shortInterestAvailability: "可得",
+  rsLineNewHigh: false, volumeDryup: false, aboveVwapStreak: false, insiderClusterWeightedScore: 2,
 };
 
 function candidate(overrides: Partial<PayloadCandidateInput> = {}): PayloadCandidateInput {

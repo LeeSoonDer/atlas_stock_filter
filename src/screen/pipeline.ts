@@ -70,6 +70,10 @@ import { fetchFredSeries } from "../data/fred/fredClient.js";
 import { computeCreditRegime } from "./credit_regime/computeCreditRegime.js";
 import { computeRiskLevel } from "./credit_regime/types.js";
 import type { CreditRegimeConfig, CreditRegimeSnapshot } from "./credit_regime/types.js";
+import card09ConfigJson from "../../config/card09.json" with { type: "json" };
+import type { LatentAccumulationConfig } from "./indicators/types.js";
+import type { InsiderWeightingConfig } from "../data/insiders/insiderWeighting.js";
+import { rsLineNewHigh } from "./indicators/rsLineNewHigh.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
@@ -87,6 +91,7 @@ const card07Config = card07ConfigJson as SectorFlowConfig;
 const hotSectorsConfig = hotSectorsConfigJson as HotSectorsConfig;
 const creditConfig = creditConfigJson as CreditRegimeConfig;
 const FRED_HY_OAS_SERIES_ID = "BAMLH0A0HYM2";
+const card09Config = card09ConfigJson as LatentAccumulationConfig & InsiderWeightingConfig;
 
 /**
  * TASK_CARD_06 SCOPE 2: maps each named pipeline segment (marked via
@@ -98,6 +103,7 @@ const FRED_HY_OAS_SERIES_ID = "BAMLH0A0HYM2";
 const PHASE_CATEGORY: Record<string, "universe" | "fetch" | "detect" | "report"> = {
   universe: "universe",
   fetch_credit_regime: "fetch",
+  fetch_spy_rsline: "fetch",
   fetch_quote: "fetch",
   fetch_enrichment: "fetch",
   fetch_insiders_index: "fetch",
@@ -122,6 +128,9 @@ const combinedDetectorsConfig: DetectorsConfig = {
     minConditionsRequired: card04Config.detectorD.minConditionsRequired,
     shortInterestSignificantDeclinePercent: card04Config.shortInterest.significantDeclinePercent,
     squeezeMinFloatPercent: card04Config.shortInterest.squeezeMinFloatPercent,
+  },
+  latentAccumulation: {
+    strengthBonusPerFlag: card09Config.latentAccumulation.strengthBonusPerFlag,
   },
 };
 
@@ -435,7 +444,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const insiderClusters = aggregateInsiderClusters(
     Object.values(checkpoint.insiderFilingResults),
     card04Config.insiders.lookbackDays,
-    card04Config.insiders.clusterMinDistinctBuyers,
+    card09Config,
     new Date(),
   );
 
@@ -453,16 +462,30 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   );
   mark("fetch_short_interest");
 
+  // TASK_CARD_09 Part A: rsLineNewHigh needs SPY bars, so they're fetched
+  // here, early (before computeIndicators runs), rather than only later
+  // in fetchMarketContext() (which serves the unrelated market-regime
+  // snapshot and historically runs after detectors). This is a second,
+  // independent SPY chart() call in the same run - a small, disclosed
+  // duplication accepted for simplicity over restructuring
+  // fetchMarketContext()'s call site (see ai/decisions.md).
+  console.error(`[screen] Phase RS-line: fetching SPY bars for the rs_line_new_high signal...`);
+  const spyBarsForRsLine = cleanBars(await fetchChartBars("SPY", card03Config.dataLookback.spyCalendarDays));
+  mark("fetch_spy_rsline");
+
   console.error(`[screen] Phase indicators: computing technical indicators for ${gatePassed.length} symbols...`);
   const flagsBySymbol = new Map<string, IndicatorFlags>();
   for (const { symbol } of gatePassed) {
     const ohlcv = checkpoint.enrichResults[symbol]?.ohlcv ?? [];
-    const flags = computeIndicators(ohlcv, combinedDetectorsConfig);
+    const flags = computeIndicators(ohlcv, combinedDetectorsConfig, card09Config);
 
     const cluster = insiderClusters.get(symbol);
     flags.insiderCluster = cluster ? cluster.insiderCluster : false;
     flags.insiderClusterDistinctBuyers = cluster?.distinctBuyerCount ?? 0;
     flags.insiderClusterLagDays = cluster?.lagDays ?? null;
+    flags.insiderClusterWeightedScore = cluster?.weightedScore ?? null;
+
+    flags.rsLineNewHigh = rsLineNewHigh(cleanBars(ohlcv), spyBarsForRsLine, card09Config.latentAccumulation.rsLineTradingDays, flags.pctOf52WeekHigh !== null && flags.pctOf52WeekHigh >= 1);
 
     const trendResult = computeInstitutionalTrend(checkpoint.institutionalHistory[symbol] ?? [], card04Config);
     flags.institutionalTrend = trendResult.trend;

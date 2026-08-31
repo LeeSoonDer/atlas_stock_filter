@@ -1,0 +1,29 @@
+{
+  "latentAccumulation": {
+    "rsLineTradingDays": 252,
+    "volumeDryupLookbackDays": 20,
+    "volumeDryupRatioThreshold": 0.3,
+    "aboveVwapStreakDays": 5,
+    "aboveVwapRollingWindow": 20,
+    "strengthBonusPerFlag": 5
+  },
+  "insiderWeighting": {
+    "topExecWeight": 2.0,
+    "otherOfficerWeight": 1.5,
+    "directorWeight": 1.0,
+    "otherWeight": 1.0,
+    "significantAmountUsd": 100000,
+    "significantMultiplier": 1.5,
+    "clusterMinWeightedScore": 2.0
+  },
+  "options": {
+    "volumeOiRatioAnomalyThreshold": 3,
+    "nearOtmCallMinPct": 0.15,
+    "nearOtmCallMaxPct": 0.3,
+    "ivMoveAvgWindowDays": 20
+  },
+  "fundamentals": {
+    "accrualQualityThreshold": 0.1,
+    "cashRunwayThresholdMonths": 12
+  }
+}

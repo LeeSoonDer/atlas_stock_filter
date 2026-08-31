@@ -20,6 +20,7 @@ const nullFlags: IndicatorFlags = {
   institutionalTrend: null, institutionalTrendAvailability: "不可得",
   shortInterestChangePercent: null, shortInterestDaysToCover: null, shortInterestPercentOfFloat: null,
   shortInterestLagDays: null, shortInterestAvailability: "不可得",
+  rsLineNewHigh: null, volumeDryup: null, aboveVwapStreak: null, insiderClusterWeightedScore: null,
 };
 
 const detectorsConfig: DetectorsConfig = {
@@ -28,6 +29,7 @@ const detectorsConfig: DetectorsConfig = {
   detectorB_volatilityCompression: { bbWidthPercentileThreshold: 20, proximityTo52WeekHighPct: 0.15, sidewaysBaseMinDays: 30, volumeContractionRatioThreshold: 1 },
   detectorC_oversoldReversal: { rsiThresholdStandard: 30, rsiThresholdSmallSpec: 25, week52PositionThreshold: 0.3, stopLossVolumeRatioThreshold: 2, stopLossLookbackDays: 10 },
   detectorD_institutionalAccumulation: { minConditionsRequired: 2, shortInterestSignificantDeclinePercent: 15, squeezeMinFloatPercent: 15 },
+  latentAccumulation: { strengthBonusPerFlag: 5 },
 };
 
 function sym(symbol: string, buckets: string[], bucketScores: Record<string, number>, flags: Partial<IndicatorFlags> = {}): SelectableSymbol {

@@ -1,5 +1,6 @@
 import type { IDetector, DetectorResult, FootprintCondition } from "./IDetector.js";
 import type { IndicatorFlags, DetectorsConfig } from "../indicators/types.js";
+import { applyLatentAccumulationBonus } from "./latentAccumulationBonus.js";
 
 const DETECTOR_ID = "oversold_reversal";
 
@@ -97,7 +98,10 @@ export const oversoldReversalDetector: IDetector = {
     const marginRsi = 1 - rsi14 / rsiThreshold;
     const marginPosition = 1 - week52PositionPct / c.week52PositionThreshold;
     const marginReversal = volumeSpike ? Math.min(maxVolumeRatioLast10Days / c.stopLossVolumeRatioThreshold, 3) / 3 : 0.5;
-    const strengthScore = ((marginRsi + marginPosition + marginReversal) / 3) * 100;
+    const baseScore = ((marginRsi + marginPosition + marginReversal) / 3) * 100;
+    // TASK_CARD_09 Part A / 修正案十五: aboveVwapStreak applies to all four
+    // buckets - see latentAccumulationBonus.ts. Bonus-only: never affects `triggered` above.
+    const strengthScore = applyLatentAccumulationBonus(baseScore, [flags.aboveVwapStreak], config.latentAccumulation.strengthBonusPerFlag);
 
     return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence, conditions };
   },

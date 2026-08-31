@@ -22,6 +22,7 @@ const baseFlags: IndicatorFlags = {
   institutionalTrend: null, institutionalTrendAvailability: "不可得",
   shortInterestChangePercent: 0, shortInterestDaysToCover: null, shortInterestPercentOfFloat: null,
   shortInterestLagDays: null, shortInterestAvailability: "可得",
+  rsLineNewHigh: null, volumeDryup: null, aboveVwapStreak: null, insiderClusterWeightedScore: null,
 };
 
 const config: DetectorsConfig = {
@@ -30,6 +31,7 @@ const config: DetectorsConfig = {
   detectorB_volatilityCompression: { bbWidthPercentileThreshold: 20, proximityTo52WeekHighPct: 0.15, sidewaysBaseMinDays: 30, volumeContractionRatioThreshold: 1 },
   detectorC_oversoldReversal: { rsiThresholdStandard: 30, rsiThresholdSmallSpec: 25, week52PositionThreshold: 0.3, stopLossVolumeRatioThreshold: 2, stopLossLookbackDays: 10 },
   detectorD_institutionalAccumulation: { minConditionsRequired: 2, shortInterestSignificantDeclinePercent: 15, squeezeMinFloatPercent: 15 },
+  latentAccumulation: { strengthBonusPerFlag: 5 },
 };
 
 test("momentum breakout near-miss: other conditions hold, pctOf52WeekHigh within 10% grace", () => {

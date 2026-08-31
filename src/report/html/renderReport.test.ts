@@ -22,6 +22,7 @@ const flags: IndicatorFlags = {
   institutionalTrend: "up", institutionalTrendAvailability: "可得",
   shortInterestChangePercent: -20, shortInterestDaysToCover: 1.5, shortInterestPercentOfFloat: 12,
   shortInterestLagDays: 20, shortInterestAvailability: "可得",
+  rsLineNewHigh: false, volumeDryup: false, aboveVwapStreak: false, insiderClusterWeightedScore: 2,
 };
 
 const sampleConditions: FootprintCondition[] = [
@@ -220,6 +221,24 @@ test("footprint detail: condition rows render field/actual/threshold and a 3-sta
   assert.ok(html.includes(">可得<"));
   const detailSection = html.split('id="detail-&lt;TEST&gt;"')[1]?.slice(0, 40) ?? "";
   assert.ok(!detailSection.includes("hidden"), "the strongest (first, index 0) candidate's detail must be expanded by default");
+});
+
+test("TASK_CARD_09 Part A: latent-accumulation row renders tri-state values and labels VWAP as a daily approximation, separate from the admission-condition table", () => {
+  const html = renderReport(baseInput); // flags fixture: rsLineNewHigh=false, volumeDryup=false, aboveVwapStreak=false, insiderClusterWeightedScore=2
+  assert.ok(html.includes("隐性吸筹复合信号(强度加分项,不参与桶准入判定)"));
+  assert.ok(html.includes("日线近似VWAP,非真实分钟级"));
+  assert.ok(html.includes("内部人加权分: 2.0"));
+});
+
+test("TASK_CARD_09 Part A: null latent-accumulation flags render 不可得, not a fabricated false", () => {
+  const input: ReportInput = {
+    ...baseInput,
+    candidates: [candidate({ flags: { ...flags, rsLineNewHigh: null, volumeDryup: null, aboveVwapStreak: null, insiderClusterWeightedScore: null } })],
+  };
+  const html = renderReport(input);
+  const candSection = html.split('id="cand-&lt;TEST&gt;"')[1] ?? "";
+  assert.ok(candSection.includes("RS线创52周新高: 不可得"));
+  assert.ok(candSection.includes("内部人加权分: 不可得"));
 });
 
 test("footprintStrength null (all-unavailable) renders '不可得' with no progress bar, never a 0% bar", () => {

@@ -17,12 +17,26 @@ function normalizeCik(raw: string): string {
   return String(Number(raw));
 }
 
+/** "1" (legacy filings) or "true" (current filings) both mean true - verified live against real filings of both vintages during TASK_CARD_09. */
+function parseBoolTag(block: string, tag: string): boolean {
+  const raw = extractOne(block, tag);
+  return raw === "1" || raw === "true";
+}
+
 function parseReportingOwners(xml: string): Form4ReportingOwner[] {
   return extractAllBlocks(xml, "reportingOwner").map((block) => {
     const idBlock = extractOne(block, "reportingOwnerId") ?? block;
     const cik = extractOne(idBlock, "rptOwnerCik");
     const name = extractOne(idBlock, "rptOwnerName");
-    return { cik: cik ? normalizeCik(cik) : "", name: name ?? "" };
+    const relBlock = extractOne(block, "reportingOwnerRelationship") ?? "";
+    return {
+      cik: cik ? normalizeCik(cik) : "",
+      name: name ?? "",
+      isDirector: parseBoolTag(relBlock, "isDirector"),
+      isOfficer: parseBoolTag(relBlock, "isOfficer"),
+      isTenPercentOwner: parseBoolTag(relBlock, "isTenPercentOwner"),
+      officerTitle: extractOne(relBlock, "officerTitle"),
+    };
   }).filter((o) => o.cik !== "");
 }
 

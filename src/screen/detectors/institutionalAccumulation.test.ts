@@ -17,6 +17,7 @@ const baseFlags: IndicatorFlags = {
   institutionalTrend: null, institutionalTrendAvailability: "不可得",
   shortInterestChangePercent: null, shortInterestDaysToCover: null, shortInterestPercentOfFloat: null,
   shortInterestLagDays: null, shortInterestAvailability: "不可得",
+  rsLineNewHigh: null, volumeDryup: null, aboveVwapStreak: null, insiderClusterWeightedScore: null,
 };
 
 const config: DetectorsConfig = {
@@ -29,6 +30,7 @@ const config: DetectorsConfig = {
     shortInterestSignificantDeclinePercent: 15,
     squeezeMinFloatPercent: 15,
   },
+  latentAccumulation: { strengthBonusPerFlag: 5 },
 };
 
 test("Detector D: insiderCluster + OBV positive (2 conditions) -> triggered", () => {
@@ -36,6 +38,19 @@ test("Detector D: insiderCluster + OBV positive (2 conditions) -> triggered", ()
   const result = institutionalAccumulationDetector.detect(flags, "STANDARD", config);
   assert.equal(result.triggered, true);
   assert.equal((result.evidence as { conditionsMet: number }).conditionsMet, 2);
+  assert.equal(result.strengthScore, 50);
+});
+
+test("TASK_CARD_09 Part A: aboveVwapStreak=true adds the configured strength bonus on top of the base score, capped at 100", () => {
+  const flags: IndicatorFlags = { ...baseFlags, insiderCluster: true, obvSlope20: 500, aboveVwapStreak: true };
+  const result = institutionalAccumulationDetector.detect(flags, "STANDARD", config);
+  assert.equal(result.triggered, true);
+  assert.equal(result.strengthScore, 55); // base 50 + one bonus flag * strengthBonusPerFlag(5)
+});
+
+test("TASK_CARD_09 Part A: aboveVwapStreak=false/null contributes no bonus (identical to the base-score test above)", () => {
+  const flags: IndicatorFlags = { ...baseFlags, insiderCluster: true, obvSlope20: 500, aboveVwapStreak: false };
+  const result = institutionalAccumulationDetector.detect(flags, "STANDARD", config);
   assert.equal(result.strengthScore, 50);
 });
 

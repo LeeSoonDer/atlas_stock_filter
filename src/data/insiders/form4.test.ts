@@ -106,6 +106,72 @@ test("parseForm4Text: returns null when there's no embedded XML document at all"
   assert.equal(result, null);
 });
 
+// TASK_CARD_09 Part A: reportingOwnerRelationship parsing, traced from real
+// live SEC EDGAR filings fetched during this card's development (not from
+// memory - see ai/decisions.md). Boolean sub-tags are inconsistently
+// "1"/"0" (older filings) or "true"/"false" (current filings) across real
+// filings; both must parse correctly.
+test("parseForm4Text: reportingOwnerRelationship with true/false booleans and a free-text officerTitle (real AEIS filing shape)", () => {
+  const xml = `
+<XML><ownershipDocument>
+    <reportingOwner>
+        <reportingOwnerId><rptOwnerCik>0001923149</rptOwnerCik><rptOwnerName>Vonne Elizabeth Karpinski</rptOwnerName></reportingOwnerId>
+        <reportingOwnerRelationship>
+            <isDirector>false</isDirector>
+            <isOfficer>true</isOfficer>
+            <isTenPercentOwner>false</isTenPercentOwner>
+            <isOther>false</isOther>
+            <officerTitle>EVP, General Counsel</officerTitle>
+        </reportingOwnerRelationship>
+    </reportingOwner>
+    <nonDerivativeTable></nonDerivativeTable>
+</ownershipDocument></XML>`;
+  const result = parseForm4Text(xml, "edgar/data/927003/x.txt", "AEIS", "927003", "2026-08-19", "now")!;
+  const owner = result.reportingOwners[0];
+  assert.equal(owner.isDirector, false);
+  assert.equal(owner.isOfficer, true);
+  assert.equal(owner.isTenPercentOwner, false);
+  assert.equal(owner.officerTitle, "EVP, General Counsel");
+});
+
+test("parseForm4Text: reportingOwnerRelationship with legacy 1/0 booleans and an '&amp;'-containing title (real filing shape)", () => {
+  const xml = `
+<XML><ownershipDocument>
+    <reportingOwner>
+        <reportingOwnerId><rptOwnerCik>0002104052</rptOwnerCik><rptOwnerName>SOME CFO</rptOwnerName></reportingOwnerId>
+        <reportingOwnerRelationship>
+            <isDirector>0</isDirector>
+            <isOfficer>1</isOfficer>
+            <isTenPercentOwner>0</isTenPercentOwner>
+            <officerTitle>Executive Vice President &amp; CFO</officerTitle>
+        </reportingOwnerRelationship>
+    </reportingOwner>
+    <nonDerivativeTable></nonDerivativeTable>
+</ownershipDocument></XML>`;
+  const result = parseForm4Text(xml, "edgar/data/2104052/x.txt", "TEST", "2104052", "2026-08-19", "now")!;
+  const owner = result.reportingOwners[0];
+  assert.equal(owner.isOfficer, true);
+  assert.equal(owner.isDirector, false);
+  // Not entity-decoded - only ever substring-matched for weight tiering, where this is harmless.
+  assert.equal(owner.officerTitle, "Executive Vice President &amp; CFO");
+});
+
+test("parseForm4Text: missing reportingOwnerRelationship block entirely -> all relationship fields default false/null, not a crash", () => {
+  const xml = `
+<XML><ownershipDocument>
+    <reportingOwner>
+        <reportingOwnerId><rptOwnerCik>0000001111</rptOwnerCik><rptOwnerName>NO RELATIONSHIP BLOCK</rptOwnerName></reportingOwnerId>
+    </reportingOwner>
+    <nonDerivativeTable></nonDerivativeTable>
+</ownershipDocument></XML>`;
+  const result = parseForm4Text(xml, "edgar/data/1111/x.txt", "TEST", "1111", "2026-08-19", "now")!;
+  const owner = result.reportingOwners[0];
+  assert.equal(owner.isDirector, false);
+  assert.equal(owner.isOfficer, false);
+  assert.equal(owner.isTenPercentOwner, false);
+  assert.equal(owner.officerTitle, null);
+});
+
 test("parseForm4Text: empty nonDerivativeTable yields zero transactions, not an error", () => {
   const xml = `<XML><ownershipDocument><nonDerivativeTable></nonDerivativeTable></ownershipDocument></XML>`;
   const result = parseForm4Text(xml, "edgar/data/1/z.txt", "X", "1", "2026-08-16", "now");

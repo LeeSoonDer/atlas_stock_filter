@@ -138,6 +138,10 @@ a{color:inherit;text-decoration:none}
 .cand-cond-row .fmv{font-family:var(--font-mono);font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cand-cond-row .state3{font-size:10px;text-align:right;color:var(--text-muted)}
 .cand-detail-foot{font-size:11px;color:var(--text-muted);padding:10px 22px 14px;border-top:1px solid var(--border-dim);margin-top:4px;line-height:1.6}
+/* TASK_CARD_09 Part A: 隐性吸筹复合信号 - visually distinct (muted, no strength coloring) from the footprintDetail table above it, since these are bonus-only signals, never admission conditions. */
+.cand-latent-row{padding:8px 22px 14px;font-size:11.5px;color:var(--text-2)}
+.cand-latent-title{color:var(--text-muted);font-size:10.5px;margin-bottom:6px}
+.cand-latent-items{display:flex;flex-wrap:wrap;gap:6px 16px}
 
 .s02-legend-foot{display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;font-size:11.5px}
 .s02-legend-foot .item{display:flex;align-items:center;gap:6px;color:var(--text-2)}
