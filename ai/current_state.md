@@ -355,6 +355,55 @@
     `npm run screen` process has already imported; either wait for it to
     finish or re-render via preview-report.ts afterward.
 
+- TASK_CARD_09 (隐性吸筹复合信号 + 期权情报 + 质量与稀释旗标), constitution
+  Amendment No.5 修正案十五/十六/十七. DONE. This is a standby card whose
+  own text requires 3-4 full production cycles as a baseline before
+  starting (not accumulated - same gap as Next Priority item 1). The
+  project owner was explicitly told this precondition was unmet and
+  chose, knowingly, to start anyway - recorded as the project owner's
+  informed decision, not a session-initiated relaxation of the card's
+  discipline (see ai/decisions.md's 2026-08-31 entry).
+  - Part A (src/screen/indicators/ new pure functions + src/data/insiders/
+    weighting rewrite): rsLineNewHigh, volumeDryup, aboveVwapStreak (all
+    strength-bonus-only, never a bucket admission condition - `triggered`
+    expressions in all 4 detectors verified unchanged via grep), and
+    insiderCluster upgraded from headcount to a role x amount weighted
+    score (form4Parser.ts now extracts real reportingOwnerRelationship
+    fields, live-verified against real SEC filings including both
+    legacy "1"/"0" and current "true"/"false" boolean formats). rsLineNewHigh
+    needs SPY bars, fetched once early via a new fetch_spy_rsline phase.
+  - Part B (new src/data/options/ module): options intelligence
+    (volume/OI ratio anomaly, near-month OTM call OI, put/call ratio,
+    ATM implied vol with a run-to-run delta) for the candidate+watchlist
+    pool only (<=15, same pool as FMP), fetched strictly after selection
+    is finalized so there is no code path back into bucket judgment -
+    grep-confirmed zero references in any detector/selection file.
+    Isolated, disclaimer-labeled rendering in both payload and report;
+    MUST-NOT grep tests confirm no whale/insider-tip-class wording ever
+    appears, run against both test output and the source files themselves.
+  - Part C (src/screen/fundamentals/ extension): accrualQualityFlag (all
+    profiles) and cashRunwayFlag (SMALL_SPEC only - the field is
+    `undefined`, not 不可得, on STANDARD symbols by design). Two new
+    fundamentalsTimeSeries fetches (cash-flow, balance-sheet modules).
+  - Live-validated on real production data across 3 runs; found and
+    fixed 2 real bugs neither unit tests nor typecheck caught:
+    (1) runFundamentalsPhase's checkpoint cache treated pre-Part-C
+    cached entries as "done", so the new fields never actually computed
+    on real data - fixed with the same migration pattern already used
+    for enrichResults' floatShares backfill (treat a cache entry as
+    stale when it's missing a field the new code always sets).
+    (2) Yahoo's free options endpoint returns an implausible placeholder
+    impliedVolatility (~0.00001) for most contracts (verified by
+    directly querying real AAPL/SPY/APGE chains outside the pipeline) -
+    added a 1% plausibility floor in fetchOptionsChain.ts, since real
+    equity/ETF IV is never that low; openInterest:0 alongside real
+    volume was NOT touched (a genuine EOD-lag characteristic, already
+    handled correctly by the existing "skip zero-OI contracts" logic).
+  - 76 new tests across all 3 parts + the 2 fixes, npx tsc --noEmit
+    clean throughout. Every DONE-WHEN item and MUST-NOT constraint
+    checked against real generated artifacts (not just test assertions)
+    from the third, clean live run (output/runs/2026-08-31_0905/).
+
 ## In Progress
 - Nothing active. Awaiting the project owner's next instruction.
 
@@ -391,15 +440,27 @@
    - no code change needed, but the first live run's response shape
    should be spot-checked against the WebSearch-verified (not
    live-verified) parsing in src/data/fred/fredClient.ts.
-7. TASK_CARD_09 (cards/TASK_CARD_09_STANDBY.md - 隐性吸筹复合信号 + 期权情报
-   + 质量旗标) is loaded into the repo but explicitly NOT to be started
-   until at least 3-4 full production cycles (screen -> Radar -> 红队 ->
-   裁决 -> 账本) have run as a baseline - per the card's own stated reason
-   (signal-quality changes need a baseline to judge against, or overfitting
-   risk). As of this writing zero such cycles have completed (same gap as
-   Next Priority item 1 above - no real Radar/红队 pass has ever happened).
-   Do not start CARD 09 without the project owner explicitly confirming
-   the baseline condition is met.
+7. TASK_CARD_09 is now DONE (see above) - started on the project owner's
+   explicit, informed override of its own baseline precondition. That
+   precondition (3-4 full production cycles as a baseline before judging
+   whether the new signals help or hurt candidate quality) is still
+   genuinely unmet - the signals are live and correct, but nobody should
+   claim they're "working well" or "not working" yet without that
+   baseline. Once a real Radar/红队 cycle history exists (same gap as
+   Next Priority item 1), it becomes possible to actually judge Part A/C's
+   signal quality retroactively.
+7b. Reusable lesson from TASK_CARD_09's live validation, for any future
+   card that adds a new required field to an existing checkpoint.json
+   cache table (fundamentalsResults, enrichResults, institutionalHistory,
+   optionsHistory, etc.): the "is this symbol already done" check MUST
+   test for the new field's presence, not just whether the symbol key
+   exists - otherwise pre-existing cache entries silently skip the new
+   computation forever. See runEnrichmentPhase's floatShares backfill and
+   runFundamentalsPhase's accrualFlagAvailability backfill for the
+   pattern to copy. Also: Yahoo's free options endpoint's impliedVolatility
+   field is unreliable (returns a ~0.00001 placeholder on most contracts)
+   - src/data/options/fetchOptionsChain.ts's IMPLAUSIBLE_IV_FLOOR handles
+   this; don't remove it without re-verifying live.
 8. Post-v1 roadmap (all optional, none required, none should be
    started without the project owner explicitly requesting that
    specific card - see cards/TASK_CARD_06_AND_ROADMAP.md; note the
