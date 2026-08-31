@@ -38,6 +38,12 @@ function candidate(overrides: Partial<PayloadCandidateInput> = {}): PayloadCandi
     sectorRank: undefined,
     pivotHigh: { date: "2026-08-01", price: 115 },
     pivotLow: { date: "2026-07-15", price: 95 },
+    optionsIntelligence: {
+      volumeOiRatioMax: null, volumeOiRatioAnomaly: null,
+      nearOtmCallOi: null, nearOtmCallOiChange: null,
+      putCallRatio: null, putCallRatioChange: null,
+      atmImpliedVol: null, ivMove: null, availability: "不可得",
+    },
     ...overrides,
   };
 }
@@ -154,6 +160,54 @@ test("TASK_CARD_08 Part A: candidate line includes risk_level", () => {
   const input: PayloadInput = { ...baseInput, candidates: [candidate({ riskLevel: "high" })] };
   const output = generateAtlasPayload(input);
   assert.ok(output.includes("risk_level: high"));
+});
+
+test("TASK_CARD_09 Part B: options intelligence unavailable renders 不可得, not fabricated numbers", () => {
+  const output = generateAtlasPayload(baseInput); // default fixture: availability 不可得
+  assert.ok(output.includes("期权情报"));
+  assert.ok(output.includes("仅供研究层参考,严禁作为筛选依据"));
+  const optionsSection = output.split("期权情报")[1]?.split("\n\n")[0] ?? "";
+  assert.ok(optionsSection.includes("不可得"));
+});
+
+test("TASK_CARD_09 Part B: available options intelligence renders the 4 metrics with their run-to-run deltas", () => {
+  const input: PayloadInput = {
+    ...baseInput,
+    candidates: [
+      candidate({
+        optionsIntelligence: {
+          volumeOiRatioMax: 4.2, volumeOiRatioAnomaly: true,
+          nearOtmCallOi: 1200, nearOtmCallOiChange: 300,
+          putCallRatio: 0.4, putCallRatioChange: -0.1,
+          atmImpliedVol: 0.55, ivMove: 0.05, availability: "可得",
+        },
+      }),
+    ],
+  };
+  const output = generateAtlasPayload(input);
+  assert.ok(output.includes("volumeOiRatioMax: 4.2"));
+  assert.ok(output.includes("[活动异常]"));
+  assert.ok(output.includes("nearOtmCallOi: 1200"));
+  assert.ok(output.includes("较上次运行变化: 300"));
+});
+
+test("TASK_CARD_09 MUST-NOT: no directional/counterparty wording anywhere in a generated payload (whale/insider-tip class phrases)", () => {
+  const input: PayloadInput = {
+    ...baseInput,
+    candidates: [
+      candidate({
+        optionsIntelligence: {
+          volumeOiRatioMax: 5, volumeOiRatioAnomaly: true,
+          nearOtmCallOi: 5000, nearOtmCallOiChange: 2000,
+          putCallRatio: 0.2, putCallRatioChange: -0.3,
+          atmImpliedVol: 0.8, ivMove: 0.3, availability: "可得",
+        },
+      }),
+    ],
+  };
+  const output = generateAtlasPayload(input);
+  const forbidden = /巨鲸|内幕|whale|insider tip|押注|smart money/i;
+  assert.ok(!forbidden.test(output), `payload leaked forbidden directional wording: ${output.match(forbidden)}`);
 });
 
 test("hot sector detail: basket entries disclose coverage; sector entries do not", () => {

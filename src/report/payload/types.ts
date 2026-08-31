@@ -8,6 +8,7 @@ import type { MarketRegimeSnapshot } from "../../screen/regime/types.js";
 import type { ProfileName } from "../../screen/types.js";
 import type { HotSectorEntry, SectorFlowEntry } from "../../screen/sector_scan/types.js";
 import type { CreditRegimeSnapshot, RiskLevel } from "../../screen/credit_regime/types.js";
+import type { OptionsIntelligence } from "../../data/options/types.js";
 
 export interface PayloadCandidateInput {
   symbol: string;
@@ -26,6 +27,8 @@ export interface PayloadCandidateInput {
   sectorRank: SectorRanking | undefined;
   pivotHigh: PivotPoint | null;
   pivotLow: PivotPoint | null;
+  /** TASK_CARD_09 Part B: aggregate-only intelligence, never a selection/detector input - see src/data/options/types.ts's own doc comment for the isolation guarantee. */
+  optionsIntelligence: OptionsIntelligence;
 }
 
 export interface PayloadInput {

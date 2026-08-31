@@ -82,6 +82,31 @@ function renderCandidate(c: PayloadCandidateInput): string[] {
   lines.push(`  shortInterestLagDays: ${fmt(c.flags.shortInterestLagDays)}`);
   lines.push("");
 
+  lines.push(...renderOptionsIntelligence(c.optionsIntelligence));
+
+  return lines;
+}
+
+/**
+ * TASK_CARD_09 Part B / 修正案十六: kept structurally and visually
+ * separate from every other section above (which IS real筛选证据) -
+ * this block is汇总数据only, never involved in bucket判定或候选筛选,
+ * and严禁 any directional/counterparty wording (grep-verified in
+ * ai/decisions.md and this file's own test suite).
+ */
+function renderOptionsIntelligence(o: PayloadCandidateInput["optionsIntelligence"]): string[] {
+  const lines: string[] = [];
+  lines.push("期权情报(仅供研究层参考,严禁作为筛选依据,数据为汇总值·无方向·无交易主体):");
+  if (o.availability === "不可得") {
+    lines.push("  不可得");
+    lines.push("");
+    return lines;
+  }
+  lines.push(`  volumeOiRatioMax: ${fmt(o.volumeOiRatioMax)}${o.volumeOiRatioAnomaly ? " [活动异常]" : ""}`);
+  lines.push(`  nearOtmCallOi: ${fmt(o.nearOtmCallOi)} (较上次运行变化: ${fmt(o.nearOtmCallOiChange)})`);
+  lines.push(`  putCallRatio: ${fmt(o.putCallRatio)} (较上次运行变化: ${fmt(o.putCallRatioChange)})`);
+  lines.push(`  atmImpliedVol: ${fmt(o.atmImpliedVol)} (较近期运行均值变化: ${fmt(o.ivMove)})`);
+  lines.push("");
   return lines;
 }
 

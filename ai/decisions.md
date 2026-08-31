@@ -434,3 +434,19 @@ Verification: 33 个新测试(211→219 之前那批已含 rsLineNewHigh/volumeD
 Tradeoff: `insiderRoleWeight()` 对既非 officer 也非 director 的申报人(纯10%大股东或 isOther)落回 `directorWeight`(卡片三档里最低的一档),而不是新发明一个第4档 - 卡片原文没提这种情况,选最保守/最不臆造的处理。`officerTitle` 未做 HTML 实体解码(如 `&amp;`)- 只在子串匹配里用到,不影响 CEO/CFO/COO 判定的正确性,故未处理。
 
 Future implications: `insiderClusterWeightedScore` 是新字段,已进入 payload(全旗标转储自动带出)与 HTML 报告(候选详情卡的"隐性吸筹复合信号"行)。Part B(期权情报)与 Part C(质量与稀释旗标)按卡片"各Part相互独立"的许可,作为后续独立 commit 分别交付。
+
+## 2026-08-31 - TASK_CARD_09 Part B DONE(期权情报,候选池限定)
+
+Decision: `src/data/options/` 新模块 - `fetchOptionsChain.ts`(包装 `yahooFinance.options(symbol)`,不传 `date` 即拿最近到期月,对应卡片"近月"要求;任何失败一律 catch 降级为 `null`,从不阻塞)、`computeOptionsIntelligence.ts`(纯函数,四项指标:`volumeOiRatioMax` 全链最大量比/OI、`nearOtmCallOi` 近月价外15-30%看涨OI总和、`putCallRatio` 全链看跌/看涨量比、`atmImpliedVol` 最近行权价的看涨看跌IV均值)。
+
+**结构性隔离,不只是"没调用"**:`pipeline.ts` 把期权抓取放在 `selectCandidates`/`selectWatchlist` 已经跑完**之后**,复用与 FMP 富化完全相同的 `enrichPoolSymbols`(候选+观察哨去重并集,当前 `config/card05.json` 上限 3+8=11,恒 ≤15)。这意味着期权数据在数据流上物理不可能回流进桶判定或选取逻辑 - 不是"写代码时小心没调用",是时序上根本不存在那条调用路径。`grep` 确认 `src/screen/detectors/*.ts` 与 `src/screen/select/*.ts` 零处提及 "options"。
+
+**历史对比的口径选择(卡片原文未写明确窗口,做了披露性解读)**:`put_call_ratio`/`near_otm_call_oi` 的"较上次运行的变化"字面就是"上一次 run"的单值差 - 直接实现。`iv_move`"较20日均值的变化"如果字面理解成"20个交易日"则需要每日历史 IV 数据,但 Yahoo 免费期权端点只给**当前时点**快照,没有历史 IV 序列可拉;而本 repo 的运行节奏本来就不是每日一次。于是把"20日"重新解读为"trailing 最近至多20次 **run** 的快照均值"(不是日历/交易日),新增 `checkpoint.json.optionsHistory[symbol]`(候选池限定,每次 run 追加当前快照、裁剪到 `config/card09.json` 的 `options.ivMoveAvgWindowDays`),在字段类型/HTML/测试注释里都写明这是 run-粒度而非日粒度的近似。
+
+**诚实标注铁律**:`OptionsIntelligence` 类型自身的文档注释、payload 渲染("期权情报(仅供研究层参考,严禁作为筛选依据,数据为汇总值·无方向·无交易主体)")、HTML 渲染(视觉上与 footprintDetail 证据表分离,同一套灰色调,不参与足迹强度计色)三处都各自独立声明这条边界,不依赖单一处的记忆。新增 grep 型 MUST-NOT 测试(payload 与 HTML 各一个),用真实拼出的"活动异常"数值构造用例,断言输出中不含"巨鲸/内幕/whale/insider tip/押注/smart money"任一模式 - 且对 `src/data/options/`、payload/report 渲染器、`pipeline.ts` 本身也做了同一份 grep(不只测试生成的输出,连源码注释都查了一遍),零命中。
+
+Verification: 新增 25 个测试(`computeOptionsIntelligence.test.ts` 11 个纯函数用例 + payload/report 各 3 个渲染/MUST-NOT 用例,206→236 之前那批基础上再加),`npx tsc --noEmit` clean。DONE-WHEN"期权字段确认未进入任何桶判定路径"这条,除了上面时序论证,额外用 `grep -rln "options" src/screen/detectors/*.ts src/screen/select/*.ts` 现场验证零命中(排除 `.test.ts`)。"全宇宙运行时间无明显增加"这条待下面的真实 run 里用 `timingBreakdown.detail.fetch_options` 实测确认(候选池 ≤15 只,预期数秒级)。
+
+Tradeoff: `yahooFinance.options()` 需要 session crumb(`needsCrumb: true`),这是本次会话第一次调用这个模块 - 没有把 crumb 机制本身的稳定性验证到位(只验证了类型与失败路径的降级),真实运行时若这个环境从未成功建立过 crumb,Part B 可能对本环境的每个候选都返回不可得,属已知、被熔断规则明确允许的降级("期权链抓取不稳定时,Part B可整体降级为跳过并标不可得,不阻塞Part A/C")- 会在下面的真实 run 里如实记录发生了哪种情况,不会假装验证过、实际没测过的部分。`nearOtmCallOi`"相对该股历史水平"这半句话卡片原文比 `put_call_ratio` 的"较上次运行的变化"更模糊 - 选择了与 `put_call_ratio` 同一套"较上次运行"单值口径,而不是也上20次滚动均值,为了实现简单和字段定义一致性,已披露非唯一可能解读。
+
+Future implications: `checkpoint.optionsHistory` 会随每次 run 持续增长(每 symbol 封顶20条,不是无限增长),但只覆盖候选+观察哨池,量级远小于 `institutionalHistory`,不构成 checkpoint.json 体积担忧。

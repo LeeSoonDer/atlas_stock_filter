@@ -10,7 +10,7 @@ import {
   runInsidersFilingsPhase,
   fetchTickerCikMaps,
 } from "../data/batchFetcher.js";
-import { loadCheckpoint } from "../data/checkpoint.js";
+import { loadCheckpoint, saveCheckpoint } from "../data/checkpoint.js";
 import { fetchChartBars } from "../data/yahooClient.js";
 import { fetchLatestShortInterestFile } from "../data/short/fetchShortInterest.js";
 import { aggregateInsiderClusters } from "../data/insiders/aggregateInsiderClusters.js";
@@ -74,6 +74,9 @@ import card09ConfigJson from "../../config/card09.json" with { type: "json" };
 import type { LatentAccumulationConfig } from "./indicators/types.js";
 import type { InsiderWeightingConfig } from "../data/insiders/insiderWeighting.js";
 import { rsLineNewHigh } from "./indicators/rsLineNewHigh.js";
+import { fetchOptionsChain } from "../data/options/fetchOptionsChain.js";
+import { computeOptionsIntelligence } from "../data/options/computeOptionsIntelligence.js";
+import type { OptionsConfig, OptionsIntelligence } from "../data/options/types.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
@@ -91,7 +94,7 @@ const card07Config = card07ConfigJson as SectorFlowConfig;
 const hotSectorsConfig = hotSectorsConfigJson as HotSectorsConfig;
 const creditConfig = creditConfigJson as CreditRegimeConfig;
 const FRED_HY_OAS_SERIES_ID = "BAMLH0A0HYM2";
-const card09Config = card09ConfigJson as LatentAccumulationConfig & InsiderWeightingConfig;
+const card09Config = card09ConfigJson as LatentAccumulationConfig & InsiderWeightingConfig & OptionsConfig;
 
 /**
  * TASK_CARD_06 SCOPE 2: maps each named pipeline segment (marked via
@@ -118,6 +121,7 @@ const PHASE_CATEGORY: Record<string, "universe" | "fetch" | "detect" | "report">
   detect_select: "detect",
   detect_sector_flow: "detect",
   fetch_fmp: "fetch",
+  fetch_options: "fetch",
   report_generate: "report",
   report_ledger: "report",
 };
@@ -694,6 +698,23 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   }
   mark("fetch_fmp");
 
+  // TASK_CARD_09 Part B / 修正案十六: options intelligence, same
+  // candidate+watchlist-only pool as FMP above - never the full universe,
+  // and structurally downstream of selectCandidates/selectWatchlist
+  // (already finalized above), so there is no code path from this data
+  // back into bucket judgment or candidate selection.
+  console.error(`[screen] Phase options: ${enrichPoolSymbols.length} candidate+watchlist symbols...`);
+  const optionsBySymbol = new Map<string, OptionsIntelligence>();
+  for (const symbol of enrichPoolSymbols) {
+    const chain = await fetchOptionsChain(symbol);
+    const priorSnapshots = checkpoint.optionsHistory[symbol] ?? [];
+    const { intelligence, snapshot } = computeOptionsIntelligence(chain, priorSnapshots, card09Config);
+    optionsBySymbol.set(symbol, intelligence);
+    checkpoint.optionsHistory[symbol] = [...priorSnapshots, snapshot].slice(-card09Config.options.ivMoveAvgWindowDays);
+  }
+  saveCheckpoint(CHECKPOINT_PATH, checkpoint);
+  mark("fetch_options");
+
   function pivotsFor(symbol: string) {
     const ohlcv = checkpoint.enrichResults[symbol]?.ohlcv ?? [];
     const clean = cleanBars(ohlcv);
@@ -727,6 +748,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       sectorRank: s.sectorRank,
       pivotHigh: pivots.high,
       pivotLow: pivots.low,
+      // TASK_CARD_09 Part B: candidate+watchlist pool only, computed after selection - see the fetch_options phase above.
+      optionsIntelligence: optionsBySymbol.get(c.symbol)!,
     };
   });
 

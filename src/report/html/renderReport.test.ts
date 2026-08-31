@@ -54,6 +54,12 @@ function candidate(overrides: Partial<HtmlReportCandidateInput> = {}): HtmlRepor
     fmp: undefined,
     footprintDetail: sampleConditions,
     footprintStrength: sampleStrength,
+    optionsIntelligence: {
+      volumeOiRatioMax: null, volumeOiRatioAnomaly: null,
+      nearOtmCallOi: null, nearOtmCallOiChange: null,
+      putCallRatio: null, putCallRatioChange: null,
+      atmImpliedVol: null, ivMove: null, availability: "不可得",
+    },
     ...overrides,
   };
 }
@@ -239,6 +245,50 @@ test("TASK_CARD_09 Part A: null latent-accumulation flags render 不可得, not 
   const candSection = html.split('id="cand-&lt;TEST&gt;"')[1] ?? "";
   assert.ok(candSection.includes("RS线创52周新高: 不可得"));
   assert.ok(candSection.includes("内部人加权分: 不可得"));
+});
+
+test("TASK_CARD_09 Part B: options intelligence unavailable (default fixture) renders 不可得, not fabricated numbers", () => {
+  const html = renderReport(baseInput);
+  assert.ok(html.includes("期权情报(仅供研究层参考,严禁作为筛选依据): 不可得"));
+});
+
+test("TASK_CARD_09 Part B: available options intelligence renders the 4 metrics with an anomaly badge", () => {
+  const input: ReportInput = {
+    ...baseInput,
+    candidates: [
+      candidate({
+        optionsIntelligence: {
+          volumeOiRatioMax: 4.2, volumeOiRatioAnomaly: true,
+          nearOtmCallOi: 1200, nearOtmCallOiChange: 300,
+          putCallRatio: 0.4, putCallRatioChange: -0.1,
+          atmImpliedVol: 0.55, ivMove: 0.05, availability: "可得",
+        },
+      }),
+    ],
+  };
+  const html = renderReport(input);
+  assert.ok(html.includes("量比/OI峰值: 4.2"));
+  assert.ok(html.includes("[活动异常]"));
+  assert.ok(html.includes("汇总数据·无方向·无交易主体"));
+});
+
+test("TASK_CARD_09 MUST-NOT: no directional/counterparty wording anywhere in a generated report (whale/insider-tip class phrases)", () => {
+  const input: ReportInput = {
+    ...baseInput,
+    candidates: [
+      candidate({
+        optionsIntelligence: {
+          volumeOiRatioMax: 6, volumeOiRatioAnomaly: true,
+          nearOtmCallOi: 8000, nearOtmCallOiChange: 4000,
+          putCallRatio: 0.15, putCallRatioChange: -0.4,
+          atmImpliedVol: 0.9, ivMove: 0.4, availability: "可得",
+        },
+      }),
+    ],
+  };
+  const html = renderReport(input);
+  const forbidden = /巨鲸|内幕|whale|insider tip|押注|smart money/i;
+  assert.ok(!forbidden.test(html), `report leaked forbidden directional wording: ${html.match(forbidden)}`);
 });
 
 test("footprintStrength null (all-unavailable) renders '不可得' with no progress bar, never a 0% bar", () => {

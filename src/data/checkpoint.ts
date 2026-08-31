@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { EnrichSlice, FundamentalsSlice, QuoteSlice } from "./types.js";
 import type { RelevantForm4Filing, ParsedForm4Filing } from "./insiders/types.js";
+import type { OptionsHistorySnapshot } from "./options/types.js";
 
 export interface InstitutionalSnapshot {
   asOf: string;
@@ -37,6 +38,8 @@ export interface CheckpointState {
   insiderFilingFailures: string[];
   /** TASK_CARD_04: one growing snapshot history per symbol, appended (deduped by day) every run - not cache-once, since a real trend needs genuinely fresh data. */
   institutionalHistory: Record<string, InstitutionalSnapshot[]>;
+  /** TASK_CARD_09 Part B: one growing snapshot history per symbol (candidate+watchlist pool only, ≤15/run), capped at config/card09.json's options.ivMoveAvgWindowDays entries - see src/data/options/computeOptionsIntelligence.ts for how this is consumed. */
+  optionsHistory: Record<string, OptionsHistorySnapshot[]>;
 }
 
 export function freshCheckpoint(profile: string): CheckpointState {
@@ -55,6 +58,7 @@ export function freshCheckpoint(profile: string): CheckpointState {
     insiderFilingResults: {},
     insiderFilingFailures: [],
     institutionalHistory: {},
+    optionsHistory: {},
   };
 }
 
@@ -70,6 +74,7 @@ function migrate(state: CheckpointState): CheckpointState {
   state.insiderFilingResults ??= {};
   state.insiderFilingFailures ??= [];
   state.institutionalHistory ??= {};
+  state.optionsHistory ??= {};
   return state;
 }
 

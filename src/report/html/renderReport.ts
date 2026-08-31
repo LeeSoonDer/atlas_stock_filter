@@ -233,6 +233,24 @@ function renderCandidateCard(c: HtmlReportCandidateInput, index: number, default
     ${c.footprintDetail.map(renderConditionRow).join("")}
     <div class="cand-detail-foot">不可得项不参与强度计分,也不计入分母。每一条均可在本次 run 的 screen_run.json 中按 symbol 溯源。</div>
     ${renderLatentAccumulationRow(f)}
+    ${renderOptionsIntelligenceRow(c.optionsIntelligence)}
+  </div>
+</div>`;
+}
+
+/** TASK_CARD_09 Part B / 修正案十六: 严格隔离 - visually separated from every other block, explicit "仅供参考,严禁筛选依据" disclaimer, never any directional/counterparty wording (grep-verified). */
+function renderOptionsIntelligenceRow(o: HtmlReportCandidateInput["optionsIntelligence"]): string {
+  if (o.availability === "不可得") {
+    return `<div class="cand-latent-row cand-options-row"><div class="cand-latent-title">期权情报(仅供研究层参考,严禁作为筛选依据): 不可得</div></div>`;
+  }
+  return `
+<div class="cand-latent-row cand-options-row">
+  <div class="cand-latent-title">期权情报(汇总数据·无方向·无交易主体,仅供研究层参考,严禁作为筛选依据)</div>
+  <div class="cand-latent-items">
+    <span>量比/OI峰值: ${fmt(o.volumeOiRatioMax)}${o.volumeOiRatioAnomaly ? " [活动异常]" : ""}</span>
+    <span>近月价外看涨OI: ${fmt(o.nearOtmCallOi)}(较上次运行: ${fmt(o.nearOtmCallOiChange)})</span>
+    <span>看跌看涨比: ${fmt(o.putCallRatio, 2)}(较上次运行: ${fmt(o.putCallRatioChange, 2)})</span>
+    <span>平值隐含波动率: ${fmt(o.atmImpliedVol, 3)}(较近期运行均值: ${fmt(o.ivMove, 3)})</span>
   </div>
 </div>`;
 }
