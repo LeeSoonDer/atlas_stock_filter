@@ -379,3 +379,18 @@ Reason: this was a real git-add staging mistake, already caught and disclosed to
 Tradeoff: a future reader using `git log --oneline` to understand "what changed per commit" for this card will find `208fdaa`'s diff doesn't match its stated scope - this note and the corrected current_state.md count are the record of that discrepancy.
 
 Future implications: none blocking - purely a git-history/documentation accuracy fix. Reinforces the general lesson (already noted elsewhere in this file for a different card) to run `git status` and review the actual staged diff before committing, not just before staging, especially when multiple `git add` calls happen close together across several logical units of work.
+
+## 2026-08-31 - claude_code_design_draft.md: Weekly Intel Briefing 重构为五层地层信息架构(信息分层版 v2)
+
+Decision: 按 `claude_code_design_draft.md`(project owner 提供的完整实现指令)重写了 `src/report/html/{renderReport,styles,types}.ts`,把周报从 TASK_CARD_07 Part C 的单一密度"intel briefing"外观,改成五个编号地层(01值得研究/02候选明细/03观察哨/04证据层/05流程与账本),每层字号/密度/表面处理各不相同。新增两个纯确定性派生字段支撑这次重构:
+
+1. `footprintDetail`(`src/screen/detectors/IDetector.ts` 的 `FootprintCondition[]`,四个检测器文件 `momentumBreakout.ts`/`volatilityCompression.ts`/`oversoldReversal.ts`/`institutionalAccumulation.ts` 各自在其 `DetectorResult` 里新增 `conditions` 字段) - 把检测器早已算出、此前被丢弃的逐条阈值比较结果保留下来,`label`/`threshold` 全部从 `config/detectors.json`/`config/card04.json` 的真实参数插值生成,不写死字面量。**这是加法,不是改法**:每个检测器原有的 `triggered`/`strengthScore` 判定表达式一个字符都没动,`conditions` 是从同一批已计算的局部变量并行读出的独立字段。
+2. `footprintStrength`(`src/report/footprint/footprintStrength.ts`)- `hitCount/availableCount` 的比值,不可得项不进分母也不算 miss;分档写进 `config/card05.json` 的新键 `footprintStrengthBands`(强≥.75/中≥.55/中偏弱≥.35/弱<.35),ratio 为 null 时(全部条件不可得)显示"不可得"而非 0% 进度条。双桶命中的候选按 `mergeFootprintDetail()` 合并两个桶的条件清单。
+
+`src/screen/pipeline.ts` 新增一个仅存活于内存的 `detectorResultsBySymbol: Map`(不写入 `screen_run.json`,不影响其持久化体积),只在候选+观察哨的窄池(≤15只)上取用来算 footprintDetail - 与既有的 FMP enrichment"永不覆盖全宇宙"先例(Memo No.4 E17)同一个理由。候选的**展示顺序**(不是选取逻辑)现在按 `footprintStrength.ratio` 降序排,null 垫底 - `selectCandidates.ts` 本身完全未改。
+
+Reason: 草案 §0 铁律明确"仅改呈现层...允许改的:生成HTML的模块 + 为分层所需的纯确定性派生字段"。footprintDetail/footprintStrength 都是从已经真实计算过的检测器比较结果和已有 `flags` 推导出来的,不引入任何新判断、新阈值或新外部依赖,满足"零AI推理、零新增依赖"。
+
+Tradeoff: 四个检测器文件的 `conditions` 构造函数(`unavailableConditions`/`evaluatedConditions`)客观上是把已有的比较表达式又写了一遍(而不是复用原表达式的布尔值),存在"两处逻辑各自维护"的理论漂移风险 - 为控制这个风险,`conditions` 的构造严格摆在原判定逻辑**之后**,读同一批已经从 `flags`/`config` 解构出的局部变量,不重新派生新的中间值。`RadarCandidateVerdict.grade`/`probability`/`confidence` 三个字段仍保留在类型里(未删除,向后兼容),但新的候选卡片头部不再渲染它们 - 草案的 02 层规格通篇只提"足迹强度"作为候选卡头部的右侧读数,没有任何一处提到 grade/probability/confidence,视为该草案的既定意图(用确定性证据取代 Radar 主观评级作为首要读数),而非遗漏。
+
+Future implications: 若未来某个 card 想恢复 grade/probability/confidence 的展示,`RadarCandidateVerdict` 类型和 `radarNarrative.candidateVerdicts` 数据通道都还在,只需要在 `renderCandidateCard()` 里重新读取即可,不需要改动上游任何数据结构。`scripts/preview-report.ts`(新增,不属于 `src/`,不在 `npm test` glob 内)是一个可复用的"从已存 screen_run.json + output/checkpoint.json 重渲染 report.html"脚本,零网络调用 - 用于本次交付的视觉验证(见下一条),未来任何一次只改呈现层的重构都可以复用它,不需要重新跑一次完整的 `npm run screen`。

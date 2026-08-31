@@ -5,5 +5,11 @@
   },
   "fmp": {
     "priceMismatchThresholdPercent": 2
-  }
+  },
+  "footprintStrengthBands": [
+    { "minRatio": 0.75, "band": "强" },
+    { "minRatio": 0.55, "band": "中" },
+    { "minRatio": 0.35, "band": "中偏弱" },
+    { "minRatio": 0, "band": "弱" }
+  ]
 }

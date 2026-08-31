@@ -4,7 +4,7 @@ import { selectWatchlist } from "./selectWatchlist.js";
 import type { SelectableSymbol, SelectConfig } from "./types.js";
 import type { IndicatorFlags, DetectorsConfig } from "../indicators/types.js";
 
-const config: SelectConfig = { select: { maxCandidates: 5, maxWatchlist: 3 } };
+const config: SelectConfig = { select: { maxCandidates: 5, maxWatchlist: 3 }, footprintStrengthBands: [{ minRatio: 0, band: "弱" }] };
 
 const nullFlags: IndicatorFlags = {
   sma20: null, sma50: null, sma200: null, smaAlignedBullish: null,

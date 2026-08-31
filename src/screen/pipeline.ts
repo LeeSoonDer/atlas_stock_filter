@@ -57,6 +57,8 @@ import {
 } from "../ledger/index.js";
 import type { ScreeningLedgerEntry } from "../ledger/types.js";
 import card05ConfigJson from "../../config/card05.json" with { type: "json" };
+import { computeFootprintStrength, mergeFootprintDetail } from "../report/footprint/footprintStrength.js";
+import type { FootprintCondition } from "./detectors/IDetector.js";
 import { resolveRunFolder } from "./resolveRunFolder.js";
 import { computeSectorFlowScan, computeHotSectorDetail } from "./sector_scan/index.js";
 import type { BasketTickerStat, CandidateSectorInfo } from "./sector_scan/index.js";
@@ -436,12 +438,21 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const detectorSummary: Record<string, { triggeredCount: number }> = {};
   for (const d of allDetectors) detectorSummary[d.id] = { triggeredCount: 0 };
 
+  // claude_code_design_draft.md §1.1: every detector's full per-condition
+  // breakdown is needed later ONLY for the narrow candidate+watchlist pool
+  // (<=15 symbols, same "never the full universe" precedent as the FMP
+  // enrichment phase below - Memo No.4 E17). Kept in an in-memory Map, not
+  // on ScreenOutputSymbol/screen_run.json, so the full-universe (~3350
+  // symbols) persisted output size is unaffected by this addition.
+  const detectorResultsBySymbol = new Map<string, DetectorResult[]>();
+
   const symbols: ScreenOutputSymbol[] = gatePassed.map(({ symbol, profile, speculative, quote }) => {
     const raw = universeBySymbol.get(symbol)!;
     const enrich = checkpoint.enrichResults[symbol];
     const flags = flagsBySymbol.get(symbol)!;
 
     const results: DetectorResult[] = allDetectors.map((d) => d.detect(flags, profile, combinedDetectorsConfig));
+    detectorResultsBySymbol.set(symbol, results);
     const buckets: string[] = [];
     const bucketScores: Record<string, number> = {};
     for (const r of results) {
@@ -631,11 +642,36 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     };
   });
 
-  const htmlCandidates: HtmlReportCandidateInput[] = payloadCandidates.map((p) => ({
-    ...p,
-    closes90d: closes90dFor(p.symbol),
-    fmp: fmpBySymbol.get(p.symbol),
-  }));
+  // claude_code_design_draft.md §1.1/§1.2: a symbol's own detector results
+  // (captured above, in detector-array order = BUCKET_ORDER order) grouped
+  // by bucket id, then merged across whichever bucket(s) it actually hit.
+  function footprintFor(symbol: string, buckets: string[]): { detail: FootprintCondition[]; strength: ReturnType<typeof computeFootprintStrength> } {
+    const results = detectorResultsBySymbol.get(symbol) ?? [];
+    const conditionsByBucket = new Map(results.map((r) => [r.detectorId, r.conditions]));
+    const detail = mergeFootprintDetail(buckets, conditionsByBucket);
+    const strength = computeFootprintStrength(detail, card05Config.footprintStrengthBands);
+    return { detail, strength };
+  }
+
+  const htmlCandidates: HtmlReportCandidateInput[] = payloadCandidates
+    .map((p) => {
+      const { detail, strength } = footprintFor(p.symbol, p.allBucketsHit);
+      return {
+        ...p,
+        closes90d: closes90dFor(p.symbol),
+        fmp: fmpBySymbol.get(p.symbol),
+        footprintDetail: detail,
+        footprintStrength: strength,
+      };
+    })
+    // §1.3: display order only (round-robin selection above is untouched) -
+    // strongest footprint first, null (all-unavailable) sinks to the bottom.
+    .sort((a, b) => {
+      if (a.footprintStrength.ratio === null && b.footprintStrength.ratio === null) return 0;
+      if (a.footprintStrength.ratio === null) return 1;
+      if (b.footprintStrength.ratio === null) return -1;
+      return b.footprintStrength.ratio - a.footprintStrength.ratio;
+    });
 
   console.error(`[screen] Phase reporting: generating PAYLOAD, DISSENT PAYLOAD, HTML report...`);
   const atlasPayloadText = generateAtlasPayload({
@@ -661,14 +697,19 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     .filter(({ outcome }) => outcome?.outcome.invalidationTriggered === true)
     .map(({ screening, outcome }) => ({ screening, invalidatedAt: outcome!.backfilledAt }));
 
-  const watchlistForHtml = watchlistEntries.map((w) => ({
-    symbol: w.symbol,
-    securityName: enrichedBySymbol.get(w.symbol)?.securityName ?? w.symbol,
-    reason: w.reason,
-  }));
+  const watchlistForHtml = watchlistEntries.map((w) => {
+    const { detail, strength } = footprintFor(w.symbol, enrichedBySymbol.get(w.symbol)?.buckets ?? []);
+    return {
+      symbol: w.symbol,
+      securityName: enrichedBySymbol.get(w.symbol)?.securityName ?? w.symbol,
+      reason: w.reason,
+      footprintDetail: detail,
+      footprintStrength: strength,
+    };
+  });
 
   const htmlReportText = renderReport({
-    runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length },
+    runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length, detectorSummary },
     marketRegime,
     sectorFootprints,
     sectorFlowScan,

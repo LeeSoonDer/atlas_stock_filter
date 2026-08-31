@@ -35,6 +35,11 @@ export interface SelectConfig {
     maxCandidates: number;
     maxWatchlist: number;
   };
+  /** claude_code_design_draft.md §1.2: footprintStrength band thresholds -
+   * config-driven, not hardcoded in the report layer. Checked in order,
+   * first `ratio >= minRatio` match wins (list must stay sorted descending
+   * by minRatio, with a final 0-floor entry as the catch-all). */
+  footprintStrengthBands: Array<{ minRatio: number; band: string }>;
 }
 
 export const BUCKET_ORDER = [

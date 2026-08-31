@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { selectCandidates } from "./selectCandidates.js";
 import type { SelectableSymbol, SelectConfig } from "./types.js";
 
-const config: SelectConfig = { select: { maxCandidates: 5, maxWatchlist: 10 } };
+const config: SelectConfig = { select: { maxCandidates: 5, maxWatchlist: 10 }, footprintStrengthBands: [{ minRatio: 0, band: "弱" }] };
 
 function sym(symbol: string, buckets: string[], bucketScores: Record<string, number>): SelectableSymbol {
   return { symbol, profile: "STANDARD", buckets, bucketScores, flags: {} as never };

@@ -4,16 +4,25 @@ import type { SectorFootprint } from "../../screen/sector_footprint/types.js";
 import type { HotSectorEntry, SectorFlowEntry } from "../../screen/sector_scan/types.js";
 import type { ScreeningLedgerEntry } from "../../ledger/types.js";
 import type { FmpEnrichmentResult } from "../../data/enrich/types.js";
+import type { FootprintCondition } from "../../screen/detectors/IDetector.js";
+import type { FootprintStrength } from "../footprint/footprintStrength.js";
 
 export interface HtmlReportCandidateInput extends PayloadCandidateInput {
   closes90d: number[];
   fmp: FmpEnrichmentResult | undefined;
+  /** claude_code_design_draft.md §1.1/§1.2 - derived from the real detector
+   * comparisons this candidate's triggered bucket(s) already made, never
+   * fabricated. Merged across all of allBucketsHit for a multi-bucket hit. */
+  footprintDetail: FootprintCondition[];
+  footprintStrength: FootprintStrength;
 }
 
 export interface HtmlWatchlistInput {
   symbol: string;
   securityName: string;
   reason: "compression_unselected" | "near_miss";
+  footprintDetail: FootprintCondition[];
+  footprintStrength: FootprintStrength;
 }
 
 /**
@@ -67,7 +76,17 @@ export interface RadarNarrativeInput {
 }
 
 export interface ReportInput {
-  runMeta: { timestamp: string; profileArg: string; gatesPassedCount: number };
+  runMeta: {
+    timestamp: string;
+    profileArg: string;
+    gatesPassedCount: number;
+    /** claude_code_design_draft.md §2 layer 01: total per-bucket trigger
+     * counts this run, needed for the "四桶总命中次数" summary line and the
+     * "零命中的桶" legend at the foot of layer 02 - both pure re-renders of
+     * data the pipeline already computes (ScreenRunResult.runMeta.detectorSummary),
+     * never app-synthesized. */
+    detectorSummary: Record<string, { triggeredCount: number }>;
+  };
   marketRegime: MarketRegimeSnapshot;
   sectorFootprints: SectorFootprint[];
   /** TASK_CARD_07 Part A/C: all 11 SPDR sectors, ranked by this week's return. */

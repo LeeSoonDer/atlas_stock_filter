@@ -1,7 +1,60 @@
-import type { IDetector, DetectorResult } from "./IDetector.js";
+import type { IDetector, DetectorResult, FootprintCondition } from "./IDetector.js";
 import type { IndicatorFlags, DetectorsConfig } from "../indicators/types.js";
 
 const DETECTOR_ID = "institutional_accumulation_proxy";
+
+/**
+ * Unlike Detectors A/B/C (one shared null-guard, so either every flag is
+ * available or none are), each of this detector's 4 conditions has its
+ * OWN, independent data dependency - one can be genuinely unavailable
+ * while the other 3 are fully evaluated. `status` reflects that per-
+ * condition, not detector-wide.
+ */
+function buildConditions(
+  c: DetectorsConfig["detectorD_institutionalAccumulation"],
+  insiderCluster: boolean | null,
+  institutionalTrend: "up" | "down" | "flat" | null,
+  shortInterestChangePercent: number | null,
+  shortInterestPercentOfFloat: number | null,
+  sma50: number | null,
+  latestClose: number | null,
+  obvSlope20: number | null,
+): FootprintCondition[] {
+  const shortInterestDecline = shortInterestChangePercent !== null && shortInterestChangePercent <= -c.shortInterestSignificantDeclinePercent;
+  const shortInterestSqueeze =
+    shortInterestPercentOfFloat !== null && sma50 !== null && latestClose !== null
+      ? shortInterestPercentOfFloat >= c.squeezeMinFloatPercent && latestClose >= sma50
+      : false;
+  const shortInterestAvailable = shortInterestChangePercent !== null || (shortInterestPercentOfFloat !== null && sma50 !== null && latestClose !== null);
+
+  return [
+    {
+      bucket: DETECTOR_ID, label: "内部人集群买入(≥2位不同内部人90日内公开市场买入)", field: "insiderCluster",
+      actual: insiderCluster === null ? null : String(insiderCluster), threshold: "true",
+      status: insiderCluster === null ? "unavailable" : insiderCluster === true ? "hit" : "miss",
+      availability: insiderCluster === null ? "不可得" : "可得",
+    },
+    {
+      bucket: DETECTOR_ID, label: "机构持股比例连续上升", field: "institutionalTrend",
+      actual: institutionalTrend, threshold: "up",
+      status: institutionalTrend === null ? "unavailable" : institutionalTrend === "up" ? "hit" : "miss",
+      availability: institutionalTrend === null ? "不可得" : "可得",
+    },
+    {
+      bucket: DETECTOR_ID, label: "空头回补迹象(空头持仓显著下降 或 挤压结构成立)", field: "shortInterestChangePercent / shortInterestPercentOfFloat",
+      actual: shortInterestChangePercent !== null ? `变化 ${shortInterestChangePercent.toFixed(1)}%` : shortInterestPercentOfFloat !== null ? `占流通股 ${shortInterestPercentOfFloat.toFixed(1)}%` : null,
+      threshold: `变化 ≤ -${c.shortInterestSignificantDeclinePercent}% 或 (占流通股 ≥ ${c.squeezeMinFloatPercent}% 且 现价≥SMA50)`,
+      status: !shortInterestAvailable ? "unavailable" : shortInterestDecline || shortInterestSqueeze ? "hit" : "miss",
+      availability: shortInterestAvailable ? "可得" : "不可得",
+    },
+    {
+      bucket: DETECTOR_ID, label: "OBV 20日斜率转正", field: "obvSlope20",
+      actual: obvSlope20, threshold: "> 0",
+      status: obvSlope20 === null ? "unavailable" : obvSlope20 > 0 ? "hit" : "miss",
+      availability: obvSlope20 === null ? "不可得" : "可得",
+    },
+  ];
+}
 
 /**
  * Detector D - Institutional Accumulation Proxy (TASK_CARD_04 SCOPE 5).
@@ -66,12 +119,16 @@ export const institutionalAccumulationDetector: IDetector = {
       conditionsMet,
     };
 
+    const footprintConditions = buildConditions(
+      c, insiderCluster, institutionalTrend, shortInterestChangePercent, shortInterestPercentOfFloat, sma50, latestClose, obvSlope20,
+    );
+
     const triggered = conditionsMet >= c.minConditionsRequired;
     if (!triggered) {
-      return { detectorId: DETECTOR_ID, triggered: false, strengthScore: null, evidence };
+      return { detectorId: DETECTOR_ID, triggered: false, strengthScore: null, evidence, conditions: footprintConditions };
     }
 
     const strengthScore = (conditionsMet / conditions.length) * 100;
-    return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence };
+    return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence, conditions: footprintConditions };
   },
 };

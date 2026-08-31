@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderReport } from "./renderReport.js";
-import type { HtmlReportCandidateInput, ReportInput } from "./types.js";
+import type { HtmlReportCandidateInput, HtmlWatchlistInput, ReportInput } from "./types.js";
 import type { IndicatorFlags } from "../../screen/indicators/types.js";
 import type { SectorFlowEntry, HotSectorEntry } from "../../screen/sector_scan/types.js";
+import type { FootprintCondition } from "../../screen/detectors/IDetector.js";
+import type { FootprintStrength } from "../footprint/footprintStrength.js";
+import { computeFootprintStrength } from "../footprint/footprintStrength.js";
 
 const flags: IndicatorFlags = {
   sma20: 100, sma50: 95, sma200: 90, smaAlignedBullish: true,
@@ -20,6 +23,14 @@ const flags: IndicatorFlags = {
   shortInterestChangePercent: -20, shortInterestDaysToCover: 1.5, shortInterestPercentOfFloat: 12,
   shortInterestLagDays: 20, shortInterestAvailability: "可得",
 };
+
+const sampleConditions: FootprintCondition[] = [
+  { bucket: "oversold_reversal", label: "RSI14 超卖", field: "rsi14", actual: "27.0", threshold: "≤ 25", status: "hit", availability: "可得" },
+  { bucket: "oversold_reversal", label: "52周位置偏低", field: "week52PositionPct", actual: "10.0%", threshold: "≤ 30%", status: "hit", availability: "可得" },
+  { bucket: "oversold_reversal", label: "反转信号(放量止跌 或 OBV转正)", field: "maxVolumeRatioLast10Days / obvSlope20", actual: "近10日最大量比 2.00x", threshold: "近10日量比 ≥ 2x 或 OBV20日斜率 > 0", status: "miss", availability: "可得" },
+];
+const sampleStrength: FootprintStrength = { ratio: 2 / 3, band: "中", hitCount: 2, availableCount: 3, totalCount: 3 };
+const emptyStrength: FootprintStrength = { ratio: null, band: "不可得", hitCount: 0, availableCount: 0, totalCount: 0 };
 
 function candidate(overrides: Partial<HtmlReportCandidateInput> = {}): HtmlReportCandidateInput {
   return {
@@ -39,6 +50,19 @@ function candidate(overrides: Partial<HtmlReportCandidateInput> = {}): HtmlRepor
     pivotLow: null,
     closes90d: [100, 102, 98, 105, 108],
     fmp: undefined,
+    footprintDetail: sampleConditions,
+    footprintStrength: sampleStrength,
+    ...overrides,
+  };
+}
+
+function watchlistEntry(overrides: Partial<HtmlWatchlistInput> = {}): HtmlWatchlistInput {
+  return {
+    symbol: "MSFT",
+    securityName: "Microsoft",
+    reason: "compression_unselected",
+    footprintDetail: [],
+    footprintStrength: emptyStrength,
     ...overrides,
   };
 }
@@ -54,7 +78,15 @@ const hotSectors: HotSectorEntry[] = [
 ];
 
 const baseInput: ReportInput = {
-  runMeta: { timestamp: "2026-08-24T00:00:00Z", profileArg: "both", gatesPassedCount: 3352 },
+  runMeta: {
+    timestamp: "2026-08-24T00:00:00Z", profileArg: "both", gatesPassedCount: 3352,
+    detectorSummary: {
+      momentum_breakout: { triggeredCount: 0 },
+      volatility_compression_setup: { triggeredCount: 3 },
+      oversold_reversal: { triggeredCount: 1 },
+      institutional_accumulation_proxy: { triggeredCount: 0 },
+    },
+  },
   marketRegime: {
     asOf: "t", spyLatestClose: 500, spySma200: 480, spyCloseVsSma200: "above", spySma200Slope: 1,
     vixCurrent: 15, vixAvg20: 16, leadingSectors: [], laggingSectors: [], label: "顺风", labelUnavailableReason: null,
@@ -63,7 +95,7 @@ const baseInput: ReportInput = {
   sectorFlowScan: flowScan,
   hotSectorDetail: hotSectors,
   candidates: [candidate()],
-  watchlist: [{ symbol: "MSFT", securityName: "Microsoft", reason: "compression_unselected" }],
+  watchlist: [watchlistEntry()],
   promotedThisRun: ["TESTX"],
   ledgerPendingBackfill: [],
   ledgerInvalidated: [],
@@ -158,26 +190,47 @@ test("theme radar: real Radar-supplied themes render lifecycle track, footprints
   assert.ok(html.includes("更多同板块票挤压=坐实"));
 });
 
-test("tier1 candidate card: no Radar verdict -> N/A grade box and placeholder desc/probability", () => {
+test("tier1 candidate card: no Radar verdict -> placeholder desc, but footprint strength (deterministic, not Radar-dependent) still renders", () => {
   const html = renderReport(baseInput);
-  assert.ok(html.includes("g-na"));
+  const candSection = html.split('id="cand-&lt;TEST&gt;"')[1];
+  assert.ok(candSection.includes(`>${PLACEHOLDER_STRING()}<`));
+  assert.ok(candSection.includes("足迹强度"));
+  assert.ok(candSection.includes("中")); // sampleStrength.band
 });
 
-test("tier1 candidate card: a supplied Radar verdict renders grade/desc/probability/confidence", () => {
+test("tier1 candidate card: a supplied Radar verdict renders its desc text (grade/probability/confidence are no longer part of this card - superseded by footprintStrength, per claude_code_design_draft.md)", () => {
   const input: ReportInput = {
     ...baseInput,
     radarNarrative: { candidateVerdicts: { "<TEST>": { grade: "B-", probability: 53, confidence: 66, descText: "上升趋势内真实挤压回调。" } } },
   };
   const html = renderReport(input);
-  assert.ok(html.includes("B-"));
-  assert.ok(html.includes("53"));
-  assert.ok(html.includes("66"));
   assert.ok(html.includes("上升趋势内真实挤压回调"));
 });
 
-test("promoted badge and event_window appear on the tier1 candidate card", () => {
+test("footprint detail: condition rows render field/actual/threshold and a 3-state availability label, default-expanded on the strongest (first) card", () => {
   const html = renderReport(baseInput);
-  assert.ok(html.includes("PROMOTED"));
+  assert.ok(html.includes("构成足迹的条件 · 2 项命中 / 3 项检查"));
+  assert.ok(html.includes("RSI14 超卖"));
+  assert.ok(html.includes("rsi14: 27.0 vs ≤ 25"));
+  assert.ok(html.includes(">可得<"));
+  const detailSection = html.split('id="detail-&lt;TEST&gt;"')[1]?.slice(0, 40) ?? "";
+  assert.ok(!detailSection.includes("hidden"), "the strongest (first, index 0) candidate's detail must be expanded by default");
+});
+
+test("footprintStrength null (all-unavailable) renders '不可得' with no progress bar, never a 0% bar", () => {
+  const input: ReportInput = {
+    ...baseInput,
+    candidates: [candidate({ symbol: "NAX", footprintDetail: [], footprintStrength: emptyStrength })],
+  };
+  const html = renderReport(input);
+  const candSection = html.split('id="cand-NAX"')[1];
+  assert.ok(candSection.includes("强度不可得"));
+  assert.ok(!candSection.includes("cand-strength-bar"));
+});
+
+test("promoted marker and event_window appear on the tier1 candidate card", () => {
+  const html = renderReport(baseInput);
+  assert.ok(html.includes("观察哨升级而来"));
   assert.ok(html.includes("⚡"));
 });
 
@@ -187,7 +240,7 @@ test("empty tier2 watchlist renders an explicit empty statement, not a blank tab
 });
 
 test("a promoted-this-run watchlist symbol gets the 已升级 badge", () => {
-  const input: ReportInput = { ...baseInput, watchlist: [{ symbol: "TESTX", securityName: "Test Corp", reason: "compression_unselected" }] };
+  const input: ReportInput = { ...baseInput, watchlist: [watchlistEntry({ symbol: "TESTX", securityName: "Test Corp" })] };
   const html = renderReport(input);
   assert.ok(html.includes("已升级"));
 });
@@ -227,6 +280,44 @@ test("ledger passive section lists pending-backfill and invalidated entries with
   assert.ok(html.includes("待回填"));
   assert.ok(html.includes("DEAD1"));
   assert.ok(html.includes("已触发无效化"));
+});
+
+test("claude_code_design_draft.md §7.2 boundary state: 0 candidates -> honest '本周 0 只' empty state, no blank 02 layer", () => {
+  const input: ReportInput = { ...baseInput, candidates: [] };
+  const html = renderReport(input);
+  assert.ok(html.includes("本周 0 只进入研究层"));
+  assert.ok(html.includes("诚实"));
+  assert.ok(html.includes("第一层候选为空"));
+});
+
+test("claude_code_design_draft.md §7.2 boundary state: a bucket with zero hits this run shows a hollow-dot legend entry, not hidden", () => {
+  const html = renderReport(baseInput); // baseInput.runMeta.detectorSummary already has 2 zero-hit buckets
+  assert.ok(html.includes("动能突破 · 0次"));
+  assert.ok(html.includes("机构蓄势代理 · 0次"));
+  assert.ok(html.includes("零命中"));
+});
+
+test("claude_code_design_draft.md §7.2 boundary state: a dual-bucket-hit candidate merges both buckets' condition lists and shows both bucket dots", () => {
+  const dualConditions: FootprintCondition[] = [
+    ...sampleConditions,
+    { bucket: "institutional_accumulation_proxy", label: "OBV 20日斜率转正", field: "obvSlope20", actual: "4.2", threshold: "> 0", status: "hit", availability: "可得" },
+  ];
+  const input: ReportInput = {
+    ...baseInput,
+    candidates: [
+      candidate({
+        symbol: "DUAL",
+        allBucketsHit: ["volatility_compression_setup", "institutional_accumulation_proxy"],
+        footprintDetail: dualConditions,
+        footprintStrength: computeFootprintStrength(dualConditions, [{ minRatio: 0, band: "弱" }, { minRatio: 0.5, band: "中" }, { minRatio: 0.75, band: "强" }]),
+      }),
+    ],
+  };
+  const html = renderReport(input);
+  const candSection = html.split('id="cand-DUAL"')[1];
+  assert.ok(candSection.includes("波动挤压蓄势"));
+  assert.ok(candSection.includes("机构蓄势代理"));
+  assert.ok(candSection.includes("4 项检查")); // 3 from sampleConditions + 1 dual-bucket condition, merged
 });
 
 function PLACEHOLDER_STRING(): string {

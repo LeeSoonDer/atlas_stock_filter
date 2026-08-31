@@ -1,7 +1,47 @@
-import type { IDetector, DetectorResult } from "./IDetector.js";
+import type { IDetector, DetectorResult, FootprintCondition } from "./IDetector.js";
 import type { IndicatorFlags, DetectorsConfig } from "../indicators/types.js";
 
 const DETECTOR_ID = "oversold_reversal";
+
+type Cfg = DetectorsConfig["detectorC_oversoldReversal"];
+
+function unavailableConditions(rsiThreshold: number, c: Cfg): FootprintCondition[] {
+  return [
+    { bucket: DETECTOR_ID, label: "RSI14 超卖", field: "rsi14", actual: null, threshold: `≤ ${rsiThreshold}`, status: "unavailable", availability: "不可得" },
+    { bucket: DETECTOR_ID, label: "52周位置偏低", field: "week52PositionPct", actual: null, threshold: `≤ ${(c.week52PositionThreshold * 100).toFixed(0)}%`, status: "unavailable", availability: "不可得" },
+    { bucket: DETECTOR_ID, label: "反转信号(放量止跌 或 OBV转正)", field: "maxVolumeRatioLast10Days / obvSlope20", actual: null, threshold: `近10日量比 ≥ ${c.stopLossVolumeRatioThreshold}x 或 OBV20日斜率 > 0`, status: "unavailable", availability: "不可得" },
+  ];
+}
+
+function evaluatedConditions(
+  rsiThreshold: number,
+  c: Cfg,
+  rsi14: number,
+  week52PositionPct: number,
+  maxVolumeRatioLast10Days: number,
+  obvSlope20: number,
+): FootprintCondition[] {
+  const volumeSpike = maxVolumeRatioLast10Days >= c.stopLossVolumeRatioThreshold;
+  const obvTurnedPositive = obvSlope20 > 0;
+  return [
+    {
+      bucket: DETECTOR_ID, label: "RSI14 超卖", field: "rsi14",
+      actual: rsi14.toFixed(1), threshold: `≤ ${rsiThreshold}`,
+      status: rsi14 <= rsiThreshold ? "hit" : "miss", availability: "可得",
+    },
+    {
+      bucket: DETECTOR_ID, label: "52周位置偏低", field: "week52PositionPct",
+      actual: `${(week52PositionPct * 100).toFixed(1)}%`, threshold: `≤ ${(c.week52PositionThreshold * 100).toFixed(0)}%`,
+      status: week52PositionPct <= c.week52PositionThreshold ? "hit" : "miss", availability: "可得",
+    },
+    {
+      bucket: DETECTOR_ID, label: "反转信号(放量止跌 或 OBV转正)", field: "maxVolumeRatioLast10Days / obvSlope20",
+      actual: `近10日最大量比 ${maxVolumeRatioLast10Days.toFixed(2)}x · OBV20日斜率 ${obvSlope20.toFixed(2)}`,
+      threshold: `近10日量比 ≥ ${c.stopLossVolumeRatioThreshold}x 或 OBV20日斜率 > 0`,
+      status: volumeSpike || obvTurnedPositive ? "hit" : "miss", availability: "可得",
+    },
+  ];
+}
 
 /**
  * Detector C - Oversold Reversal (TASK_CARD_02 SCOPE 4). All conditions
@@ -33,8 +73,14 @@ export const oversoldReversalDetector: IDetector = {
     const evidence = { rsi14, rsiThreshold, week52PositionPct, maxVolumeRatioLast10Days, obvSlope20 };
 
     if (rsi14 === null || week52PositionPct === null || maxVolumeRatioLast10Days === null || obvSlope20 === null) {
-      return { detectorId: DETECTOR_ID, triggered: false, strengthScore: null, evidence: { ...evidence, reason: "insufficient_data" } };
+      return {
+        detectorId: DETECTOR_ID, triggered: false, strengthScore: null,
+        evidence: { ...evidence, reason: "insufficient_data" },
+        conditions: unavailableConditions(rsiThreshold, c),
+      };
     }
+
+    const conditions = evaluatedConditions(rsiThreshold, c, rsi14, week52PositionPct, maxVolumeRatioLast10Days, obvSlope20);
 
     const volumeSpike = maxVolumeRatioLast10Days >= c.stopLossVolumeRatioThreshold;
     const obvTurnedPositive = obvSlope20 > 0;
@@ -45,7 +91,7 @@ export const oversoldReversalDetector: IDetector = {
       (volumeSpike || obvTurnedPositive);
 
     if (!triggered) {
-      return { detectorId: DETECTOR_ID, triggered: false, strengthScore: null, evidence };
+      return { detectorId: DETECTOR_ID, triggered: false, strengthScore: null, evidence, conditions };
     }
 
     const marginRsi = 1 - rsi14 / rsiThreshold;
@@ -53,6 +99,6 @@ export const oversoldReversalDetector: IDetector = {
     const marginReversal = volumeSpike ? Math.min(maxVolumeRatioLast10Days / c.stopLossVolumeRatioThreshold, 3) / 3 : 0.5;
     const strengthScore = ((marginRsi + marginPosition + marginReversal) / 3) * 100;
 
-    return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence };
+    return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence, conditions };
   },
 };

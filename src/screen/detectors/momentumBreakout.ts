@@ -1,4 +1,4 @@
-import type { IDetector, DetectorResult } from "./IDetector.js";
+import type { IDetector, DetectorResult, FootprintCondition } from "./IDetector.js";
 import type { IndicatorFlags, DetectorsConfig } from "../indicators/types.js";
 
 /**
@@ -16,6 +16,51 @@ import type { IndicatorFlags, DetectorsConfig } from "../indicators/types.js";
  */
 const DETECTOR_ID = "momentum_breakout";
 
+/** Builds the 4 named-condition breakdown for claude_code_design_draft.md
+ * §1.1's footprintDetail - `unavailable` variant used verbatim on the
+ * insufficient-data early return (every underlying flag is null there, so
+ * every condition is unavailable), `evaluated` variant used on the normal
+ * path (by construction, all 4 flags are non-null there already). */
+function unavailableConditions(c: DetectorsConfig["detectorA_momentumBreakout"]): FootprintCondition[] {
+  return [
+    { bucket: DETECTOR_ID, label: "现价距52周高点比例", field: "pctOf52WeekHigh", actual: null, threshold: `≥ ${(c.pctOf52WeekHigh * 100).toFixed(0)}%`, status: "unavailable", availability: "不可得" },
+    { bucket: DETECTOR_ID, label: "均线多头排列(SMA20>50>200 且价格在SMA20上方)", field: "smaAlignedBullish", actual: null, threshold: "true", status: "unavailable", availability: "不可得" },
+    { bucket: DETECTOR_ID, label: "近5日最大量比", field: "maxVolumeRatioLast5Days", actual: null, threshold: `≥ ${c.volumeRatioThreshold}x`, status: "unavailable", availability: "不可得" },
+    { bucket: DETECTOR_ID, label: "6个月相对强度百分位", field: "rs6MonthPercentile", actual: null, threshold: `≥ ${c.rs6MonthPercentileThreshold}`, status: "unavailable", availability: "不可得" },
+  ];
+}
+
+function evaluatedConditions(
+  c: DetectorsConfig["detectorA_momentumBreakout"],
+  pctOf52WeekHigh: number,
+  smaAlignedBullish: boolean,
+  maxVolumeRatioLast5Days: number,
+  rs6MonthPercentile: number,
+): FootprintCondition[] {
+  return [
+    {
+      bucket: DETECTOR_ID, label: "现价距52周高点比例", field: "pctOf52WeekHigh",
+      actual: `${(pctOf52WeekHigh * 100).toFixed(1)}%`, threshold: `≥ ${(c.pctOf52WeekHigh * 100).toFixed(0)}%`,
+      status: pctOf52WeekHigh >= c.pctOf52WeekHigh ? "hit" : "miss", availability: "可得",
+    },
+    {
+      bucket: DETECTOR_ID, label: "均线多头排列(SMA20>50>200 且价格在SMA20上方)", field: "smaAlignedBullish",
+      actual: String(smaAlignedBullish), threshold: "true",
+      status: smaAlignedBullish === true ? "hit" : "miss", availability: "可得",
+    },
+    {
+      bucket: DETECTOR_ID, label: "近5日最大量比", field: "maxVolumeRatioLast5Days",
+      actual: `${maxVolumeRatioLast5Days.toFixed(2)}x`, threshold: `≥ ${c.volumeRatioThreshold}x`,
+      status: maxVolumeRatioLast5Days >= c.volumeRatioThreshold ? "hit" : "miss", availability: "可得",
+    },
+    {
+      bucket: DETECTOR_ID, label: "6个月相对强度百分位", field: "rs6MonthPercentile",
+      actual: rs6MonthPercentile.toFixed(1), threshold: `≥ ${c.rs6MonthPercentileThreshold}`,
+      status: rs6MonthPercentile >= c.rs6MonthPercentileThreshold ? "hit" : "miss", availability: "可得",
+    },
+  ];
+}
+
 export const momentumBreakoutDetector: IDetector = {
   id: DETECTOR_ID,
   name: "动能突破",
@@ -31,8 +76,14 @@ export const momentumBreakoutDetector: IDetector = {
       maxVolumeRatioLast5Days === null ||
       rs6MonthPercentile === null
     ) {
-      return { detectorId: DETECTOR_ID, triggered: false, strengthScore: null, evidence: { ...evidence, reason: "insufficient_data" } };
+      return {
+        detectorId: DETECTOR_ID, triggered: false, strengthScore: null,
+        evidence: { ...evidence, reason: "insufficient_data" },
+        conditions: unavailableConditions(c),
+      };
     }
+
+    const conditions = evaluatedConditions(c, pctOf52WeekHigh, smaAlignedBullish, maxVolumeRatioLast5Days, rs6MonthPercentile);
 
     const triggered =
       pctOf52WeekHigh >= c.pctOf52WeekHigh &&
@@ -41,7 +92,7 @@ export const momentumBreakoutDetector: IDetector = {
       rs6MonthPercentile >= c.rs6MonthPercentileThreshold;
 
     if (!triggered) {
-      return { detectorId: DETECTOR_ID, triggered: false, strengthScore: null, evidence };
+      return { detectorId: DETECTOR_ID, triggered: false, strengthScore: null, evidence, conditions };
     }
 
     const marginProximity = pctOf52WeekHigh;
@@ -49,6 +100,6 @@ export const momentumBreakoutDetector: IDetector = {
     const marginRs = rs6MonthPercentile / 100;
     const strengthScore = ((marginProximity + marginVolume + marginRs) / 3) * 100;
 
-    return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence };
+    return { detectorId: DETECTOR_ID, triggered: true, strengthScore, evidence, conditions };
   },
 };
