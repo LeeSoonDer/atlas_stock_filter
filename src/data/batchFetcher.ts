@@ -134,7 +134,15 @@ export async function runFundamentalsPhase(
   checkpoint: CheckpointState,
   checkpointPath: string,
 ): Promise<void> {
-  const done = new Set([...Object.keys(checkpoint.fundamentalsResults), ...checkpoint.fundamentalsFailures]);
+  // TASK_CARD_09 Part C migration (same pattern as runEnrichmentPhase's
+  // floatShares backfill above): an entry cached before accrualFlag
+  // existed has accrualFlagAvailability === undefined (the field is
+  // simply absent from the old JSON, not "不可得"), so it's treated as
+  // NOT done here and gets refetched once to backfill it.
+  const doneResults = Object.entries(checkpoint.fundamentalsResults)
+    .filter(([, v]) => v.accrualFlagAvailability !== undefined)
+    .map(([symbol]) => symbol);
+  const done = new Set([...doneResults, ...checkpoint.fundamentalsFailures]);
   const remaining = symbols.filter((s) => !done.has(s.symbol));
   const batches = chunk(remaining, fetchConfig.enrichConcurrency);
 

@@ -468,3 +468,23 @@ Verification: 新增 18 个测试(`fundamentals.test.ts` 从 9 个增到 27,payl
 Tradeoff: `accrualQualityFlag`/`cashRunwayFlag` 用到的两路新 `fundamentalsTimeSeries` 调用,字段名是读库源码常量表确认的,不是真实 API 响应验证过的 - 与 CARD 05 的 FMP 字段名、CARD 08 的 FRED 响应体是同一类"文档/源码验证、非真实调用验证"的已披露残余风险。`runFundamentalsPhase` 现在对每个候选池 symbol(本 repo 近期一次真实 run 是 799 个)多发 2 次网络请求 - 数量级明显大于 Part B 的候选+观察哨池(≤15),对整体 run 时长的真实影响会在下面的真实 run 里如实记录。
 
 Future implications: `accrualRatio`(原始比率,不只是布尔旗标)已保留在 `FundamentalsSlice` 上,供未来任何需要具体数值(而非只是超阈值与否)的场景直接读取,不需要重新计算。
+
+## 2026-08-31 - TASK_CARD_09 真实数据全量验证:发现并修复两个真实问题,全部 DONE-WHEN 逐条核实
+
+Decision: 用真实生产数据跑了三次 `npm run screen -- --profile both`(第一次暴露问题一,第二次暴露问题二并验证问题一的修复,第三次是两个修复都到位后的最终干净版本),过程中发现两个此前测试没覆盖到的真实问题,均已修复并重新用真实数据验证。
+
+**问题一 - `runFundamentalsPhase` 的 checkpoint 缓存不知道 schema 变了**:第一次真实 run 完成后核对候选的 `fundamentals` 字段,发现三只真实候选(SLP/SBFG/CRNX)的 `accrualFlag`/`cashRunwayMonths` 全部是 `undefined` - 不是"数据不可得",是**根本没跑过** Part C 的新代码。原因:候选池 799 个 symbol 的 `checkpoint.fundamentalsResults` 是**今天早些时候 CARD 08 验证 run 时缓存的**,那时 Part C 代码还不存在,`runFundamentalsPhase` 的"是否已完成"判定只看 symbol 是否在缓存里出现过,不看缓存的内容是不是新 schema。这与本 repo 自己在 `runEnrichmentPhase` 里已经解决过一次的同一类问题(`floatShares` 加进 `EnrichSlice` 时留的迁移注释)一模一样,只是这次是新会话、新字段,没有对照抄那段已有逻辑就直接写了旧式的"存在即完成"判定。修复:照抄 `runEnrichmentPhase` 的迁移模式,`done` 集合改为只认 `accrualFlagAvailability !== undefined` 的缓存条目为"已完成",旧 schema 条目会被当成待办重新抓取一次(补齐后又变成新 schema,以后不会重复触发)。第二次真实 run(471.5秒,比第一次的40秒慢很多,因为 799 个候选池 symbol 这次真的各多发了2次网络请求)验证:三只候选的 `accrualFlag`/`accrualRatio` 全部有真实数值,89 个 SMALL_SPEC symbol 里 70 个成功算出 `cashRunwayMonths`(其余不可得或现金流转正)。
+
+**问题二 - Yahoo 免费期权数据的 `impliedVolatility` 字段大量返回占位符,不是真实数值**:第二次真实 run 里三只候选的 `atmImpliedVol` 分别是 0.0159/0.0313/0.0313 - 数值小到不可能是真实隐含波动率(哪怕大盘最平静的时候,主流股票 IV 也不会低于个位数百分比)。没有直接怀疑自己代码逻辑,而是先**现场直连 yahoo-finance2 库**分别拉了 APGE(真实候选)、AAPL、SPY 三个期权链核对原始返回值:三者的 `impliedVolatility` 绝大多数合约都是 `0.00001` 这个精确的浮点值(哪怕是 volume 高达6000+张的合约也一样),而 `expirationDates[0]` 恰好是**当天**(今天 2026-08-31 是期权到期日),换到下一个到期日(9月2日)问题依旧存在 - 说明这不是"0DTE 特有现象",而是这个免费数据源本身在很大比例合约上就不返回真实计算过的 IV,只给一个占位浮点数。`openInterest` 则是另一回事:同样大量显示 0,但这是**真实、合理**的现象(未平仓量是收盘后才结算的字段,当日盘中交易量再大也不会实时反映到 OI 里),代码里已有的"OI=0 跳过该合约"处理本身就是对这个现象的正确诚实响应,不需要改。只对 IV 加了修复:`fetchOptionsChain.ts` 新增 `IMPLAUSIBLE_IV_FLOOR = 0.01`,任何低于1%的 `impliedVolatility` 一律当 `null` 处理,不当真实数值传下去 - 这是本着"零编造"原则,宁可少报一个数字,也不让一个占位符伪装成"我们算出了这只股票的隐含波动率只有1.6%"这种看似合理实则虚假的结论。第三次真实 run 验证:同一批候选里,能拿到有效 IV 的合约显示 `atmImpliedVol: 0.1914`(19.14%,数量级正常),另一只候选的整个期权情报因链本身抓取失败诚实显示"不可得",第三只候选显示 `putCallRatio`/`volumeOiRatioMax` 有值但 `atmImpliedVol: 不可得`(逐字段独立可用性,不是整体成败二选一)。
+
+**DONE-WHEN 逐条核实(第三次真实 run,`output/runs/2026-08-31_0905/`)**:
+* Part A 四旗标:3只真实候选人工核对(`rsLineNewHigh`/`volumeDryup`/`aboveVwapStreak` 均有非退化的真实 true/false 分布,`insiderClusterWeightedScore` 全宇宙 436 个 symbol 有真实非零值,人工抽查 ABCL=4.5/ADAG=2.0/ABSI=1.5 与各自 `insiderCluster` 布尔值的对应关系吻合职位加权逻辑)。RS线新高逻辑的"大盘跌个股平"场景已在单测中字面复现(独立于本次真实数据验证)。
+* Part B:`timingBreakdown.detail.fetch_options` 实测 2951ms(11只候选+观察哨),相对于总运行时间(40秒至8分钟不等,取决于缓存状态)可忽略不计,"全宇宙运行时间无明显增加"成立。`grep` 对三次真实生成的 payload/report 文件本身(不只是单测输出)做 MUST-NOT 检查,零命中。
+* Part C:三次真实 run 均确认无候选/观察哨因新旗标被淘汰(选取结果 3 候选 + 8 观察哨在三次 run 之间保持一致,新增字段只是多显示信息)。`timingBreakdown.detail.fetch_fundamentals` 从第二次真实全量抓取的 471.5 秒背景下的贡献值可以由差值推出(第一次40秒总时长 vs 第二次471.5秒总时长,新增的两路请求是主因)。
+* 全部新字段进入 payload 与 HTML 报告:三份真实生成的 `ATLAS_PAYLOAD.txt`/`report.html` 均已人工核对包含 Part A/B/C 全部新字段的真实渲染输出(不只是单测断言)。
+
+Verification: 249 个既有单测保持全绿(两处修复均未破坏任何已有测试),`npx tsc --noEmit` clean。两个问题都是通过**真实数据 + 现场直连验证**发现的,不是凭空猜测或单测覆盖率盲区的巧合 - 这也是为什么本卡片在 CARD 09 自身"需要3-4个真实周期基线才能判断信号质量好坏"这条纪律被项目所有者明知故犯跳过之后,仍然值得在实现阶段就做真实数据验证:基线周期解决的是"信号有没有用"这个更高层的问题,而这两个 bug 是"数据管道本身对不对"这个更基础的前提 - 跳过基线不等于可以跳过用真实数据验证代码本身没有编造或吃了坏数据。
+
+Tradeoff: `IMPLAUSIBLE_IV_FLOOR = 0.01` 这个阈值本身是根据本次真实观测(0.00001 占位符 vs 0.19 真实值之间有巨大数量级落差)拍板的,没有一个"官方"的、Yahoo 文档写明的占位符定义 - 属于本会话新增的、已披露的启发式判断,不是逐字来自卡片或修正案的规定。若未来这个免费数据源的占位符行为发生变化(比如变成用 `null` 而不是 `0.00001` 表示占位),这个 1% 地板本身不会造成新的错误(真实 IV 极少低于1%,即使误判也是保守方向 - 少报一个真实的极端低波动数字,而不是多报一个假数字),但如果 Yahoo 反过来开始用 0.5% 这种介于占位符与真实值之间的值,现在的地板可能需要重新校准。
+
+Future implications: 两次 checkpoint schema 迁移(`floatShares` 与 `accrualFlagAvailability`)现在是同一个模式的两个实例 - 未来任何一张 checkpoint 缓存表新增必填字段时,都应该照抄这个"用新字段本身的存在与否判定是否需要重新抓取"的模式,而不是假设"symbol 在缓存里出现过 = 数据是最新的"。

@@ -2,6 +2,25 @@ import { yahooFinance } from "../yahooClient.js";
 import type { RawOptionsChain, RawOptionContract } from "./types.js";
 
 /**
+ * No real equity/ETF implied volatility is ever this low in any actual
+ * market condition (even the calmest VIX prints imply high-single-digit-
+ * percent vol on major names). Live-verified during this card's
+ * development (not guessed): fetching real AAPL/SPY/APGE chains returned
+ * `impliedVolatility` values like 0.00001 and 0.0039 on the vast majority
+ * of contracts (including ones with real, substantial volume) - a
+ * placeholder/unset value from Yahoo's backend, not a real computed
+ * number. Passing these through would fabricate a plausible-looking but
+ * false atmImpliedVol/ivMove; treating them as unavailable is the
+ * zero-fabrication-consistent choice. openInterest is NOT filtered the
+ * same way - openInterest:0 alongside real nonzero volume is a genuine,
+ * expected characteristic of this data source (open interest is an
+ * end-of-day figure that lags same-day trading, not a placeholder), and
+ * computeOptionsIntelligence.ts already treats openInterest:0 as "skip
+ * this contract" for the ratio calc, which is the correct honest response.
+ */
+const IMPLAUSIBLE_IV_FLOOR = 0.01;
+
+/**
  * TASK_CARD_09 Part B 熔断: never throws. A missing/unstable options chain
  * (yahoo-finance2's options() needs a session crumb, which can fail
  * independently of the rest of this run) degrades to null - the caller
@@ -24,7 +43,7 @@ export async function fetchOptionsChain(symbol: string): Promise<RawOptionsChain
       strike: c.strike,
       volume: c.volume ?? null,
       openInterest: c.openInterest ?? null,
-      impliedVolatility: typeof c.impliedVolatility === "number" ? c.impliedVolatility : null,
+      impliedVolatility: typeof c.impliedVolatility === "number" && c.impliedVolatility >= IMPLAUSIBLE_IV_FLOOR ? c.impliedVolatility : null,
       inTheMoney: c.inTheMoney,
     });
 
