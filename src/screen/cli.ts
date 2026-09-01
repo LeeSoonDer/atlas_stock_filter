@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { runScreen, writeScreenOutput } from "./pipeline.js";
 import type { ProfileArg } from "./types.js";
+import { pushRunToSupabase } from "../report/supabase/pushRun.js";
 
 const VALID_PROFILES: ProfileArg[] = ["standard", "small_spec", "both"];
 
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
 
   const result = await runScreen(profileArg);
   const path = writeScreenOutput(result);
+  await pushRunToSupabase(result);
 
   console.error(`[cli] done in ${result.runMeta.elapsedMs}ms`);
   console.error(`[cli] output written to ${path}`);
