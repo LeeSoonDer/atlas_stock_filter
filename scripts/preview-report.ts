@@ -18,9 +18,28 @@ import type { SelectConfig } from "../src/screen/select/types.js";
 import { allDetectors } from "../src/screen/detectors/index.js";
 import { computeFootprintStrength, mergeFootprintDetail } from "../src/report/footprint/footprintStrength.js";
 import { computeRiskLevel } from "../src/screen/credit_regime/types.js";
+import type { OptionsIntelligence } from "../src/data/options/types.js";
+
+/** options intelligence was never persisted to screen_run.json (it's
+ * computed post-selection, in-memory only, in pipeline.ts) - honestly
+ * unavailable on re-render rather than re-fetched (this script makes zero
+ * network calls by design), matching this codebase's own 不可得 convention. */
+const UNAVAILABLE_OPTIONS_INTELLIGENCE: OptionsIntelligence = {
+  volumeOiRatioMax: null,
+  volumeOiRatioAnomaly: null,
+  nearOtmCallOi: null,
+  nearOtmCallOiChange: null,
+  putCallRatio: null,
+  putCallRatioChange: null,
+  atmImpliedVol: null,
+  ivMove: null,
+  availability: "不可得",
+};
+import type { LatentAccumulationConfig } from "../src/screen/indicators/types.js";
 import detectorsConfigJson from "../config/detectors.json" with { type: "json" };
 import card04ConfigJson from "../config/card04.json" with { type: "json" };
 import card05ConfigJson from "../config/card05.json" with { type: "json" };
+import card09ConfigJson from "../config/card09.json" with { type: "json" };
 
 const runDir = process.argv[2];
 const outFile = process.argv[3] ?? `${runDir}/report-preview-v2.html`;
@@ -32,12 +51,16 @@ if (!runDir) {
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
 const card04Config = card04ConfigJson as { shortInterest: { significantDeclinePercent: number; squeezeMinFloatPercent: number }; detectorD: { minConditionsRequired: number } };
 const card05Config = card05ConfigJson as SelectConfig;
+const card09Config = card09ConfigJson as LatentAccumulationConfig;
 const combinedDetectorsConfig: DetectorsConfig = {
   ...detectorsConfig,
   detectorD_institutionalAccumulation: {
     minConditionsRequired: card04Config.detectorD.minConditionsRequired,
     shortInterestSignificantDeclinePercent: card04Config.shortInterest.significantDeclinePercent,
     squeezeMinFloatPercent: card04Config.shortInterest.squeezeMinFloatPercent,
+  },
+  latentAccumulation: {
+    strengthBonusPerFlag: card09Config.latentAccumulation.strengthBonusPerFlag,
   },
 };
 
@@ -92,6 +115,7 @@ const htmlCandidates: HtmlReportCandidateInput[] = run.selection.candidates
       pivotLow: null,
       closes90d: closes90dFor(c.symbol),
       fmp: undefined,
+      optionsIntelligence: UNAVAILABLE_OPTIONS_INTELLIGENCE,
       footprintDetail: detail,
       footprintStrength: strength,
     };

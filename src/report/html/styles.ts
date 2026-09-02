@@ -125,6 +125,8 @@ a{color:inherit;text-decoration:none}
 .cand-spark .shape{font-size:10.5px;color:var(--text-muted);margin-top:4px}
 
 .cand-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 22px;border-top:1px solid var(--border)}
+.cand-foot-text{flex:1;min-width:0}
+.cand-verdict{font-family:var(--font-mono);font-size:11.5px;color:var(--accent-strong);margin-bottom:3px}
 .cand-foot .desc{font-size:12.5px;color:var(--text-2);flex:1;min-width:0}
 .cand-expand-btn{flex-shrink:0;background:none;border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text-2);font-size:11px;font-family:var(--font-body);padding:5px 12px;cursor:pointer}
 .cand-expand-btn:hover{border-color:var(--border-strong);color:var(--text)}

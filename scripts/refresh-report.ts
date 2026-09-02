@@ -28,9 +28,28 @@ import type { SelectConfig } from "../src/screen/select/types.js";
 import { allDetectors } from "../src/screen/detectors/index.js";
 import { computeFootprintStrength, mergeFootprintDetail } from "../src/report/footprint/footprintStrength.js";
 import { computeRiskLevel } from "../src/screen/credit_regime/types.js";
+import type { OptionsIntelligence } from "../src/data/options/types.js";
+
+/** options intelligence was never persisted to screen_run.json (it's
+ * computed post-selection, in-memory only, in pipeline.ts) - honestly
+ * unavailable on re-render rather than re-fetched (these scripts make zero
+ * network calls by design), matching this codebase's own 不可得 convention. */
+const UNAVAILABLE_OPTIONS_INTELLIGENCE: OptionsIntelligence = {
+  volumeOiRatioMax: null,
+  volumeOiRatioAnomaly: null,
+  nearOtmCallOi: null,
+  nearOtmCallOiChange: null,
+  putCallRatio: null,
+  putCallRatioChange: null,
+  atmImpliedVol: null,
+  ivMove: null,
+  availability: "不可得",
+};
+import type { LatentAccumulationConfig } from "../src/screen/indicators/types.js";
 import detectorsConfigJson from "../config/detectors.json" with { type: "json" };
 import card04ConfigJson from "../config/card04.json" with { type: "json" };
 import card05ConfigJson from "../config/card05.json" with { type: "json" };
+import card09ConfigJson from "../config/card09.json" with { type: "json" };
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -64,8 +83,12 @@ async function supabasePatch(path: string, body: unknown): Promise<void> {
 /** screen_run.json's runMeta.timestamp is the one reliable key shared
  * between a local run folder and its Supabase atlas_runs row (local folder
  * NAMES can't be re-derived after the fact - resolveRunFolder()'s
- * exists-check logic is only correct at write time, for a fresh run). */
+ * exists-check logic is only correct at write time, for a fresh run).
+ * Compared by parsed instant, not raw string equality - Postgres echoes
+ * timestamptz back as "...+00:00" while the local JSON has "...Z"; same
+ * instant, different string, verified live (both are 2026-09-01T16:39:24.797). */
 function findRunFolderByTimestamp(runTimestamp: string): string | null {
+  const targetMs = new Date(runTimestamp).getTime();
   const baseDir = "output/runs";
   if (!existsSync(baseDir)) return null;
   for (const entry of readdirSync(baseDir, { withFileTypes: true })) {
@@ -75,7 +98,7 @@ function findRunFolderByTimestamp(runTimestamp: string): string | null {
     if (!existsSync(jsonPath)) continue;
     try {
       const meta = JSON.parse(readFileSync(jsonPath, "utf-8"));
-      if (meta.runMeta?.timestamp === runTimestamp) return candidate;
+      if (new Date(meta.runMeta?.timestamp).getTime() === targetMs) return candidate;
     } catch {
       continue;
     }
@@ -125,12 +148,16 @@ async function main() {
     detectorD: { minConditionsRequired: number };
   };
   const card05Config = card05ConfigJson as SelectConfig;
+  const card09Config = card09ConfigJson as LatentAccumulationConfig;
   const combinedDetectorsConfig: DetectorsConfig = {
     ...detectorsConfig,
     detectorD_institutionalAccumulation: {
       minConditionsRequired: card04Config.detectorD.minConditionsRequired,
       shortInterestSignificantDeclinePercent: card04Config.shortInterest.significantDeclinePercent,
       squeezeMinFloatPercent: card04Config.shortInterest.squeezeMinFloatPercent,
+    },
+    latentAccumulation: {
+      strengthBonusPerFlag: card09Config.latentAccumulation.strengthBonusPerFlag,
     },
   };
 
@@ -180,6 +207,7 @@ async function main() {
         pivotLow: null,
         closes90d: closes90dFor(c.symbol),
         fmp: undefined,
+        optionsIntelligence: UNAVAILABLE_OPTIONS_INTELLIGENCE,
         footprintDetail: detail,
         footprintStrength: strength,
       };

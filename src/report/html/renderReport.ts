@@ -227,7 +227,14 @@ function renderCandidateCard(c: HtmlReportCandidateInput, index: number, default
     <div class="cand-spark">${renderSparklineSvg(c.closes90d, 150, 48)}<div class="shape">90日走势</div></div>
   </div>
   <div class="cand-foot">
-    ${verdict?.descText ? `<div class="desc">${escapeHtml(verdict.descText)}</div>` : `<div class="desc placeholder">${PLACEHOLDER}</div>`}
+    <div class="cand-foot-text">
+      ${
+        verdict?.grade || verdict?.probability !== undefined || verdict?.confidence !== undefined
+          ? `<div class="cand-verdict">评级 ${escapeHtml(verdict.grade ?? "不可得")} · 概率评分 ${fmt(verdict.probability, 0)} · 确信度评分 ${fmt(verdict.confidence, 0)}</div>`
+          : `<div class="cand-verdict placeholder">评级: ${PLACEHOLDER}</div>`
+      }
+      ${verdict?.descText ? `<div class="desc">${escapeHtml(verdict.descText)}</div>` : `<div class="desc placeholder">${PLACEHOLDER}</div>`}
+    </div>
     <button type="button" class="cand-expand-btn" data-noprint data-expand-target="detail-${escapeHtml(c.symbol)}">${defaultOpen ? "收起 ▲" : "展开 ▼"}</button>
   </div>
   <div class="cand-detail" id="detail-${escapeHtml(c.symbol)}" data-detail ${defaultOpen ? "" : "hidden"}>
