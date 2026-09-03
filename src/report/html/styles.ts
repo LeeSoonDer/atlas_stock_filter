@@ -22,7 +22,7 @@ export const REPORT_STYLES = `
   --text:#E8EDF5;--text-2:#9AA6B8;--text-muted:#5E6B80;
   --accent:#22C9D6;--accent-strong:#55E0EA;--accent-weak:#22C9D614;
   --pos:#16C784;--neg:#EA3943;--warn:#F0A020;
-  --bucket-momentum:#2F80FF;--bucket-vol:#A855F7;--bucket-instl:#16C784;--bucket-oversold:#F0A020;
+  --bucket-momentum:#2F80FF;--bucket-vol:#A855F7;--bucket-instl:#16C784;--bucket-oversold:#F0A020;--bucket-contagion:#EA3943;
   --strength-strong:#16C784;--strength-mid:#9AA6B8;--strength-weak:#5E6B80;
   --font-display:'Manrope',system-ui,sans-serif;--font-body:'Manrope',system-ui,sans-serif;
   --font-mono:'JetBrains Mono',ui-monospace,monospace;
@@ -116,6 +116,9 @@ a{color:inherit;text-decoration:none}
 .cand-metarow .bucket-name{display:flex;align-items:center;gap:6px}
 .cand-metarow .sep{color:var(--border-strong)}
 .cand-metarow .tier-warn{color:var(--warn);font-weight:600}
+.cand-metarow .tier-warn-red{color:var(--neg);font-weight:700}
+.cand-contagion-row{margin-top:2px;font-size:12px;color:var(--text-2)}
+.cand-contagion-row b{color:var(--neg)}
 
 .cand-datarow{display:flex;gap:20px;padding:0 22px 18px;flex-wrap:wrap}
 .cand-facts{flex:1;min-width:280px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px 16px}

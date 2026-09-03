@@ -86,6 +86,16 @@ function renderCandidate(c: PayloadCandidateInput): string[] {
   lines.push(`  shortInterestLagDays: ${fmt(c.flags.shortInterestLagDays)}`);
   lines.push("");
 
+  if (c.contagion) {
+    const ct = c.contagion;
+    lines.push("板块传导 (供研究层验证叙事是否成立,应用层不作判断):");
+    lines.push(`  leader_ticker=${ct.leaderTicker}, leader_move_pct=${fmtPct(ct.leaderMovePct)}, lag_gap_pct=${fmtPct(ct.lagGapPct)}, sector_event_date=${ct.sectorEventDate}`);
+    if (ct.highBetaSatellite) {
+      lines.push("  ⚠ high_beta_satellite=true - 高波动小市值卫星标的,未因此排除(修正案二十),下游须加倍审视");
+    }
+    lines.push("");
+  }
+
   lines.push(...renderOptionsIntelligence(c.optionsIntelligence));
 
   return lines;
@@ -135,6 +145,17 @@ export function generateAtlasPayload(input: PayloadInput): string {
   lines.push(`VIX: current=${fmt(r.vixCurrent)} vs 20日均值=${fmt(r.vixAvg20)}`);
   lines.push(`领涨板块: ${r.leadingSectors.map((s) => s.sector).join(", ") || "无"}`);
   lines.push(`领跌板块: ${r.laggingSectors.map((s) => s.sector).join(", ") || "无"}`);
+  lines.push("");
+
+  lines.push("== 活跃度地板 / 板块传导概览 (修正案二十一/二十二) ==");
+  lines.push(`活跃度地板拦掉标的数: ${input.runMeta.vitalityExcludedCount} (不进候选,不进观察哨)`);
+  if (input.runMeta.eventDrivenSectors.length === 0) {
+    lines.push("本次运行无 event_driven 板块(未检出板块龙头异动)。");
+  } else {
+    for (const e of input.runMeta.eventDrivenSectors) {
+      lines.push(`  ${e.sector}: leader=${e.leaderTicker}, leader_move_pct=${fmtPct(e.leaderMovePct)}, sector_event_date=${e.sectorEventDate}`);
+    }
+  }
   lines.push("");
 
   const cr = input.creditRegime;

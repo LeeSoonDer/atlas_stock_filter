@@ -21,7 +21,8 @@ export interface HtmlReportCandidateInput extends PayloadCandidateInput {
 export interface HtmlWatchlistInput {
   symbol: string;
   securityName: string;
-  reason: "compression_unselected" | "near_miss";
+  /** "contagion_unselected" added by TASK_CARD_10 Part C. */
+  reason: "contagion_unselected" | "compression_unselected" | "near_miss";
   footprintDetail: FootprintCondition[];
   footprintStrength: FootprintStrength;
 }

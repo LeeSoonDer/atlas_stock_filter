@@ -21,7 +21,8 @@ export interface SelectedCandidate {
 
 export interface WatchlistEntry {
   symbol: string;
-  reason: "compression_unselected" | "near_miss";
+  /** "contagion_unselected" added by TASK_CARD_10 Part C / 修正案二十二: sector_contagion runners-up get watchlist priority ahead of compression_unselected. */
+  reason: "contagion_unselected" | "compression_unselected" | "near_miss";
   nearMiss: NearMissDetail | null;
 }
 

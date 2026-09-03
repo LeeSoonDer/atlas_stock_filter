@@ -20,6 +20,7 @@ const BUCKETS: Array<{ id: string; label: string; colorVar: string }> = [
   { id: "volatility_compression_setup", label: "波动挤压蓄势", colorVar: "--bucket-vol" },
   { id: "oversold_reversal", label: "超卖反转", colorVar: "--bucket-oversold" },
   { id: "institutional_accumulation_proxy", label: "机构蓄势代理", colorVar: "--bucket-instl" },
+  { id: "sector_contagion", label: "板块传导", colorVar: "--bucket-contagion" },
 ];
 const BUCKET_BY_ID = new Map(BUCKETS.map((b) => [b.id, b]));
 
@@ -196,10 +197,18 @@ function renderCandidateCard(c: HtmlReportCandidateInput, index: number, default
     c.riskLevel !== "normal" ? `<span class="tier-warn">风险等级: ${RISK_LABEL[c.riskLevel]}</span>` : "",
     c.fundamentals?.accrualFlag === true ? `<span class="tier-warn">应计质量存疑</span>` : "",
     c.fundamentals?.dilutionRisk === true ? `<span class="tier-warn">稀释风险(现金跑道${fmt(c.fundamentals.cashRunwayMonths, 1)}个月)</span>` : "",
+    c.contagion?.highBetaSatellite === true ? `<span class="tier-warn-red">⚠ 高波动卫星标的(修正案二十:不因此排除,但须加倍审视)</span>` : "",
   ].filter(Boolean);
 
   const hitCount = c.footprintDetail.filter((d) => d.status === "hit").length;
   const checkedCount = c.footprintDetail.length;
+  const contagionRow = c.contagion
+    ? (() => {
+        const ct = c.contagion!;
+        const ownMove = ct.leaderMovePct - ct.lagGapPct;
+        return `<div class="cand-contagion-row">板块传导: 龙头 <b>${escapeHtml(ct.leaderTicker)}</b> 涨 ${fmtPct(ct.leaderMovePct, 1)} → 本标的仅涨 ${fmtPct(ownMove, 1)},滞后 <b>${fmtPct(ct.lagGapPct, 1)}</b>(板块事件日期: ${escapeHtml(ct.sectorEventDate)})</div>`;
+      })()
+    : "";
 
   return `
 <div class="cand-card" id="cand-${escapeHtml(c.symbol)}" data-strength="${cls.replace("strength-", "")}" data-stratum="02">
@@ -215,6 +224,7 @@ function renderCandidateCard(c: HtmlReportCandidateInput, index: number, default
     </div>
   </div>
   <div class="cand-metarow">${metaParts.join(`<span class="sep">·</span>`)}</div>
+  ${contagionRow}
   <div class="cand-datarow">
     <div class="cand-facts">
       <div class="cand-fact"><div class="lbl">RSI14</div><div class="val">${fmt(f.rsi14, 1)} ${rsiLabel(f.rsi14)}</div></div>
@@ -306,7 +316,7 @@ function render02(input: ReportInput): string {
 
 /** ===== 03 · 观察哨 ===== */
 function renderWatchRow(w: HtmlWatchlistInput, promoted: boolean): string {
-  const reasonLabel = w.reason === "compression_unselected" ? "波动挤压蓄势(未入选候选)" : "临界未达标";
+  const reasonLabel = w.reason === "contagion_unselected" ? "板块传导(未入选候选)" : w.reason === "compression_unselected" ? "波动挤压蓄势(未入选候选)" : "临界未达标";
   const strengthText = w.footprintStrength.ratio === null ? "不可得" : `${escapeHtml(w.footprintStrength.band)} · ${w.footprintStrength.hitCount}/${w.footprintStrength.availableCount}`;
   return `<div class="watch-row">
   <span class="wtk mono">${escapeHtml(w.symbol)}</span>

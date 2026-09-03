@@ -64,3 +64,57 @@ test("a previously-watchlisted symbol that still doesn't trigger any bucket is n
   const candidates = selectCandidates(symbols, new Set(["StillWaiting"]), config);
   assert.equal(candidates.length, 0);
 });
+
+// TASK_CARD_10 Part C / 修正案二十二: sector_contagion reserves up to
+// ceil(maxCandidates/2) seats, filled before the original 4-bucket round
+// robin. config here has maxCandidates=5 -> reserved budget is 3.
+test("sector_contagion gets a reserved block of seats ahead of the original 4-bucket round robin", () => {
+  const symbols: SelectableSymbol[] = [
+    sym("Contagion1", ["sector_contagion"], { sector_contagion: 90 }),
+    sym("Contagion2", ["sector_contagion"], { sector_contagion: 70 }),
+    sym("A1", ["momentum_breakout"], { momentum_breakout: 99 }),
+    sym("B1", ["volatility_compression_setup"], { volatility_compression_setup: 99 }),
+  ];
+  const candidates = selectCandidates(symbols, new Set(), config);
+  assert.deepEqual(
+    candidates.map((c) => c.symbol),
+    ["Contagion1", "Contagion2", "A1", "B1"],
+  );
+  assert.equal(candidates.find((c) => c.symbol === "Contagion1")!.primaryBucket, "sector_contagion");
+});
+
+test("sector_contagion reservation is capped (never more than ceil(maxCandidates/2)), leaving room for the original four", () => {
+  const symbols: SelectableSymbol[] = [
+    ...Array.from({ length: 5 }, (_, i) => sym(`Contagion${i}`, ["sector_contagion"], { sector_contagion: 100 - i })),
+    sym("A1", ["momentum_breakout"], { momentum_breakout: 99 }),
+  ];
+  const candidates = selectCandidates(symbols, new Set(), config); // maxCandidates=5, contagion budget=3
+  const contagionSeated = candidates.filter((c) => c.primaryBucket === "sector_contagion");
+  assert.equal(contagionSeated.length, 3);
+  assert.deepEqual(contagionSeated.map((c) => c.symbol), ["Contagion0", "Contagion1", "Contagion2"]); // highest-scoring 3
+  assert.ok(candidates.some((c) => c.symbol === "A1")); // original four still got a seat
+});
+
+test("zero sector_contagion hits -> every seat goes to the original four buckets, unchanged from pre-CARD_10 behavior", () => {
+  const symbols: SelectableSymbol[] = [
+    sym("A1", ["momentum_breakout"], { momentum_breakout: 90 }),
+    sym("A2", ["momentum_breakout"], { momentum_breakout: 80 }),
+    sym("B1", ["volatility_compression_setup"], { volatility_compression_setup: 70 }),
+    sym("C1", ["oversold_reversal"], { oversold_reversal: 60 }),
+    sym("D1", ["institutional_accumulation_proxy"], { institutional_accumulation_proxy: 50 }),
+  ];
+  const candidates = selectCandidates(symbols, new Set(), config);
+  assert.equal(candidates.length, 5);
+  assert.ok(candidates.every((c) => c.primaryBucket !== "sector_contagion"));
+});
+
+test("a promoted sector_contagion symbol counts against the reserved budget, not on top of it", () => {
+  const symbols: SelectableSymbol[] = [
+    sym("PromotedContagion", ["sector_contagion"], { sector_contagion: 40 }),
+    ...Array.from({ length: 4 }, (_, i) => sym(`Contagion${i}`, ["sector_contagion"], { sector_contagion: 90 - i })),
+  ];
+  const candidates = selectCandidates(symbols, new Set(["PromotedContagion"]), config); // budget=3 total
+  const contagionSeated = candidates.filter((c) => c.primaryBucket === "sector_contagion");
+  assert.equal(contagionSeated.length, 3); // PromotedContagion (1, promoted) + 2 more from the reservation pass, not 1+3
+  assert.equal(candidates.find((c) => c.symbol === "PromotedContagion")!.promoted, true);
+});

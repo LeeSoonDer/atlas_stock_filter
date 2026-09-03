@@ -1,0 +1,10 @@
+{
+  "vitality": {
+    "avgWindow": 50,
+    "medianLookbackDays": 10,
+    "medianMin": 0.8,
+    "activeLookbackDays": 20,
+    "activeRvolThreshold": 1.2,
+    "activeDaysMin": 3
+  }
+}
