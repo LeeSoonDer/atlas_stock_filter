@@ -33,6 +33,23 @@ export async function pushRunToSupabase(result: ScreenRunResult): Promise<void> 
   const dissentPayloadText = readFileSync(result.selection.dissentPayloadPath, "utf-8");
   const runDate = result.runMeta.timestamp.slice(0, 10);
 
+  // The picks as structured data too, not just baked into report_html — the
+  // web UI needs the symbols themselves to offer a per-candidate handoff
+  // button and an "already researched" badge. Names come from the run's own
+  // symbol records, so nothing here is re-derived or guessed.
+  const nameBySymbol = new Map(result.symbols.map((s) => [s.symbol, s.securityName]));
+  const candidates = result.selection.candidates.map((c) => ({
+    symbol: c.symbol,
+    securityName: nameBySymbol.get(c.symbol) ?? c.symbol,
+    primaryBucket: c.primaryBucket,
+    promoted: c.promoted,
+  }));
+  const watchlist = result.selection.watchlist.map((w) => ({
+    symbol: w.symbol,
+    securityName: nameBySymbol.get(w.symbol) ?? w.symbol,
+    reason: w.reason,
+  }));
+
   const row = {
     run_date: runDate,
     run_timestamp: result.runMeta.timestamp,
@@ -43,6 +60,8 @@ export async function pushRunToSupabase(result: ScreenRunResult): Promise<void> 
     report_html: reportHtml,
     atlas_payload_text: atlasPayloadText,
     atlas_dissent_payload_text: dissentPayloadText,
+    candidates,
+    watchlist,
   };
 
   try {
