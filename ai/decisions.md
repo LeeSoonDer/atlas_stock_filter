@@ -522,3 +522,21 @@ Verification: 51个新增单测(vitality 6、contagion模块36、select扩展6�
 **发现但未处理(明确不在本卡片授权范围内,原样保留在工作区未提交)**:上一轮 `atlas_bootstrap_final` 同步进repo时一并带入的、与本卡片(修正案二十至二十三)无关的其他新增内容——`cards/TASK_CARD_08.md` 新增的"Part C 市场宽度"、`cards/TASK_CARD_09_STANDBY.md` 新增的 Part A 5-7项(ADX/回踩型/集中度警示,受修正案十八/十九管辖)、`constitution/ATLAS_AMENDMENT_NO5_SIGNAL_REFINEMENT.md` 的新增条款本身、`EXECUTION_RULES.md`(人工仓位管理SOP,非应用代码)、`UPGRADE_DEPLOYMENT_GUIDE.md` 的更新。均未 `git add`,未出现在本次提交里 - 需要项目所有者显式立项才处理。
 
 Future implications: 两次 checkpoint schema 迁移(`floatShares` 与 `accrualFlagAvailability`)现在是同一个模式的两个实例 - 未来任何一张 checkpoint 缓存表新增必填字段时,都应该照抄这个"用新字段本身的存在与否判定是否需要重新抓取"的模式,而不是假设"symbol 在缓存里出现过 = 数据是最新的"。
+
+## [2026-09-04] 仓库三分:Atlas 合并回主线,Stockpit 独立成仓,Cockpit 冻结为原版
+
+**决定**:结束"整合工作全部挤在 `web-integration` 分支"的临时状态,拆成三个各自清晰的仓库/分支:
+
+* **Atlas(本仓库)**:`web-integration` 合并进 `master` 后删除分支。理由:所有 Supabase 触点(`pushRunToSupabase`、`pullLedgerFromSupabase`/`pushLedgerToSupabase`)在缺 key 时都是打印一行日志后 return,不抛异常,所以没有 key 的克隆跑 `npm run screen` 与合并前完全一致;而把它留在分支上是个已经咬过人的坑——2026-09-01 那次跑筛选时工作区停在 `master`,导致 Supabase 推送被静默跳过,事后才发现要补跑。一个仓库一个当前版本,这类错误就不可能再发生。
+* **Stockpit**:新建 `LeeSoonDer/stockpit`(private),从 Cockpit 仓库的 `web-integration` 分支克隆而来,保留完整历史,落在独立文件夹 `C:\Users\SD\Desktop\stockpit`。理由见下方"为什么这次该拆"。
+* **Cockpit**:`main` 还原为纯原版并打 tag `cockpit-v1.0`,`web-integration` 分支删除。这个仓库从此是原版 Cockpit 的冻结存档。
+
+**为什么这次该拆(与更早"不建议单开 project"的判断并不矛盾)**:早先提出拆分时整合尚未动工,拆分等于要把 Cockpit 全套功能重写一遍,纯属重复劳动。到本次决策时东西已经建好并且**真的分叉了**——Stockpit 删了 ETF、改了全部命名与路由、journal 只认 Supabase——两条线不可能再收敛,一个永不合并的长期分支实质上就是伪装成分支的 fork。另有一个很实际的约束:一个工作目录同时只能 checkout 一个分支,不拆分文件夹就**无法同时运行原版 Cockpit 和 Stockpit**,而"保留可运行的本地 Cockpit"是项目所有者的明确要求。已验证两者可并行(Stockpit 3000 端口 pm2 常驻,Cockpit 3001 端口按需手动起,健康检查均通过)。
+
+**账本合并冲突的处理**:`output/ledger.jsonl` 在合并时冲突(两边都追加过)。未直接采信任何一边,先验证 `master` 的 178 行是 `web-integration` 189 行的严格前缀,确认取后者不丢任何数据、且能保住 2026-09-03 那次真实扫描的 11 条,再解决。宪法 append-only 约束未被破坏(全程只有追加,无改写)。
+
+**Cockpit main 还原时的一次过度回滚与修正**:`git revert -m 1 <PR合并commit>` 撤销过头了——`7f4a738`(print/PDF 重设计)此前也只通过那个 PR 才进入 main,于是被一并撤掉。改用 `git read-tree -u --reset 7f4a738` + 新提交,把文件树精确还原到纯原版状态,print 重设计得以保留。全程未使用 force push,已推送的历史一行未改写。
+
+**过程中遭遇的 git 元数据损坏(与本次决策无关的机器层面事件)**:Atlas 仓库的 `.git/config`、`.git/refs/heads/master`、`.git/refs/remotes/origin/master` 三个文件被写成全 NULL 字节(文件系统层面损坏,非 git 逻辑错误)。`.git/objects` 完好无损,`git fsck` 除无害悬空对象外零报错。依据完好的 `.git/logs/HEAD`(reflog)重建了 config 与两个 ref,内容(账本 189 行、TASK_CARD_10 全部文件、300/300 测试)逐项复核无误。**这类损坏通常源于异常关机或杀毒/同步软件介入,值得留意是否复发。**
+
+Future implications: Atlas 从此只有 `master` 一条线,以后再做跨仓库联动改动时不要再开长期分支;需要隔离就用短生命周期分支并尽快合并。Stockpit 与 Atlas 之间只通过 Supabase 的表结构耦合,没有代码依赖——改动任一边的表结构时,两边都要同步(`supabase/schema.sql` 在 Stockpit 仓库,`src/ledger/supabaseSync.ts` 与 `src/report/supabase/pushRun.ts` 在本仓库)。
