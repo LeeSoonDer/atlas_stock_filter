@@ -283,6 +283,10 @@ test("TASK_CARD_09 MUST-NOT: no directional/counterparty wording anywhere in a g
           putCallRatio: 0.15, putCallRatioChange: -0.4,
           atmImpliedVol: 0.9, ivMove: 0.4, availability: "可得",
         },
+        // TASK_CARD_10 Part B/D MUST-NOT: "应用层判断传导逻辑是否成立" -
+        // included in this same forbidden-wording sweep since contagion
+        // text is new surface area for accidentally leaked judgment.
+        contagion: { leaderTicker: "LEADCO", leaderMovePct: 0.15, lagGapPct: 0.12, sectorEventDate: "2026-08-20", highBetaSatellite: true },
       }),
     ],
   };
@@ -327,6 +331,33 @@ test("footprintStrength null (all-unavailable) renders '不可得' with no progr
   const candSection = html.split('id="cand-NAX"')[1];
   assert.ok(candSection.includes("强度不可得"));
   assert.ok(!candSection.includes("cand-strength-bar"));
+});
+
+test("TASK_CARD_10 Part D: a sector_contagion candidate renders the leader/lag line, its own bucket dot, and (when flagged) a red high_beta_satellite warning distinct from the amber tier-warn badges", () => {
+  const html = renderReport({
+    ...baseInput,
+    candidates: [
+      candidate({
+        symbol: "LAGGER",
+        primaryBucket: "sector_contagion",
+        allBucketsHit: ["sector_contagion"],
+        contagion: { leaderTicker: "LEADCO", leaderMovePct: 0.15, lagGapPct: 0.12, sectorEventDate: "2026-08-20", highBetaSatellite: true },
+      }),
+    ],
+  });
+  assert.ok(html.includes("板块传导"));
+  assert.ok(html.includes("LEADCO"));
+  assert.ok(html.includes("15.0%"));
+  assert.ok(html.includes("滞后"));
+  assert.ok(html.includes("12.0%"));
+  assert.ok(html.includes("tier-warn-red"));
+  assert.ok(html.includes("高波动卫星"));
+});
+
+test("TASK_CARD_10 Part D: a non-contagion candidate renders no contagion row and no satellite warning", () => {
+  const html = renderReport(baseInput); // default fixture candidate has no `contagion` field
+  assert.ok(!html.includes('class="cand-contagion-row">')); // the CSS rule for the class still appears in <style>, but no rendered instance of the div
+  assert.ok(!html.includes("高波动卫星"));
 });
 
 test("promoted marker and event_window appear on the tier1 candidate card", () => {

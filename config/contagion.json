@@ -1,0 +1,21 @@
+{
+  "contagion": {
+    "leader": {
+      "dailyGainMin": 0.05,
+      "cumulative3dGainMin": 0.08,
+      "rvolMin": 3.0,
+      "breakoutLookbackDays": 20,
+      "rvolAvgWindow": 50
+    },
+    "laggard": {
+      "minLagGapPct": 0.06,
+      "rvolMin": 1.3
+    },
+    "satellite": {
+      "maxMarketCap": 1000000000,
+      "betaLookbackDays": 60,
+      "betaMin": 1.5,
+      "volMultipleOfSectorMedian": 1.5
+    }
+  }
+}

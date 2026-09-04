@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { runScreen, writeScreenOutput } from "./pipeline.js";
 import type { ProfileArg } from "./types.js";
+import { pushRunToSupabase } from "../report/supabase/pushRun.js";
+import { pullLedgerFromSupabase, pushLedgerToSupabase } from "../ledger/supabaseSync.js";
 
 const VALID_PROFILES: ProfileArg[] = ["standard", "small_spec", "both"];
 
@@ -18,8 +20,15 @@ async function main(): Promise<void> {
   const profileArg = parseArgs(process.argv.slice(2));
   console.error(`[cli] Atlas Layer 1 screen starting, profile=${profileArg}`);
 
+  // Pull first: an outcome the operator backfilled from the web belongs in
+  // the local ledger BEFORE this run reads it for watchlist-promotion and
+  // pending-backfill state.
+  await pullLedgerFromSupabase();
+
   const result = await runScreen(profileArg);
   const path = writeScreenOutput(result);
+  await pushRunToSupabase(result);
+  await pushLedgerToSupabase();
 
   console.error(`[cli] done in ${result.runMeta.elapsedMs}ms`);
   console.error(`[cli] output written to ${path}`);

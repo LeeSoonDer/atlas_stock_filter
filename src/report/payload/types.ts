@@ -29,6 +29,14 @@ export interface PayloadCandidateInput {
   pivotLow: PivotPoint | null;
   /** TASK_CARD_09 Part B: aggregate-only intelligence, never a selection/detector input - see src/data/options/types.ts's own doc comment for the isolation guarantee. */
   optionsIntelligence: OptionsIntelligence;
+  /** TASK_CARD_10 Part B/D / 修正案二十二: present only when this candidate triggered the sector_contagion bucket - "传导逻辑是否成立...由研究层判定,应用层不作判断" (Radar consumes these fields verbatim, never interpreted here). */
+  contagion?: {
+    leaderTicker: string;
+    leaderMovePct: number;
+    lagGapPct: number;
+    sectorEventDate: string;
+    highBetaSatellite: boolean;
+  };
 }
 
 export interface PayloadInput {
@@ -36,6 +44,10 @@ export interface PayloadInput {
     timestamp: string;
     profileArg: string;
     gatesPassedCount: number;
+    /** TASK_CARD_10 Part A/D: gate-passed symbols excluded from candidates/watchlist by the vitality floor - see ai/decisions.md for the accepted "宁可错过埋伏,不要死股" tradeoff this counts against. */
+    vitalityExcludedCount: number;
+    /** TASK_CARD_10 Part B/D: every sector this run marked event_driven (a stage-1 leader was found), for Radar's contagion-narrative verification. */
+    eventDrivenSectors: Array<{ sector: string; leaderTicker: string; leaderMovePct: number; sectorEventDate: string }>;
   };
   marketRegime: MarketRegimeSnapshot;
   /** TASK_CARD_08 Part A. */

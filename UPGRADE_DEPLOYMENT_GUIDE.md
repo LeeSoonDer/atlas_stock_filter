@@ -8,10 +8,43 @@
 ## 总览:三批,按时序
 
 ```
+批次零(最高优先)      Radar patch v4 + CARD 10    → 修复死水缺陷
 批次一(现在)          Radar patch v2 + CARD 08    → 立刻做,零风险
 批次二(CARD06收官后)  CARD 07                     → 报告变情报简报长相
 批次三(跑3-4周后)     CARD 09 + Radar patch v3    → 信号精化,需基线
 ```
+
+
+* * *
+
+## 批次零 — 最高优先(本次新增,修复结构性缺陷)
+
+> 首次真实运行暴露:全部候选量比低于 1,产出死水标的。本批次修复此问题,并将 Atlas
+> 定位校准为"热点挖掘器 + 埋伏"双引擎。**优先级高于批次一。**
+
+### A. 手动贴 claude.ai(2分钟,立刻生效)
+
+**Atlas Radar Project:**
+1. Instructions 栏**末尾追加** `projects/ATLAS_RADAR_INSTRUCTIONS_PATCH_v4.md` 全文
+2. Knowledge **上传** `constitution/ATLAS_AMENDMENT_NO6_CONTAGION.md`
+
+贴完立刻生效:下次贴 payload,Radar 就会做**市场叙事扫描**(本周在炒什么 + 传导链拆解
++ 与量化足迹交叉印证)。**这部分完全靠 Radar 检索,不依赖 CARD 10。**
+
+### B. 丢 Claude Code:CARD 10
+
+复制进 repo:
+* `constitution/ATLAS_AMENDMENT_NO6_CONTAGION.md`
+* `cards/TASK_CARD_10.md`
+
+```
+读 cards/TASK_CARD_10.md 完整执行,commit per scope item。
+先读 constitution/ATLAS_AMENDMENT_NO6_CONTAGION.md 作为授权依据。
+本卡修复首次运行暴露的结构性缺陷,优先级高。
+DONE-WHEN 通过后停下报告。
+```
+
+做完:活跃度地板杀死水标的 + 板块传导桶(第五桶)+ 热点占候选一半席位。
 
 * * *
 
@@ -110,11 +143,13 @@ DONE-WHEN 通过后停下报告。
 [PATCH_v2]                     ← 七区块周报简报结构
   ＋
 [PATCH_v3]                     ← 新信号解读规则与边界
+  ＋
+[PATCH_v4]                     ← 市场叙事扫描 + 传导候选验证
 ```
 
 三份叠加,后者不覆盖前者。
 
-Knowledge 累计上传:ATLAS_v1_0 + 修正案二/三/四/五 + 备忘录三/四。
+Knowledge 累计上传:ATLAS_v1_0 + 修正案二/三/四/五/六 + 备忘录三/四。
 
 * * *
 
@@ -122,6 +157,9 @@ Knowledge 累计上传:ATLAS_v1_0 + 修正案二/三/四/五 + 备忘录三/四�
 
 | 什么 | 贴哪/丢哪 | 何时 |
 |---|---|---|
+| **Radar PATCH_v4** | claude.ai Radar Instructions | **最优先** |
+| **CARD 10** | Claude Code | **最优先** |
+| 修正案六 | repo + Radar Knowledge | 最优先 |
 | Radar PATCH_v2 | claude.ai Radar Instructions | 现在 |
 | 修正案四 | claude.ai Radar Knowledge | 现在 |
 | CARD 08 | Claude Code | 现在 |

@@ -24,6 +24,7 @@ import { computeIndicators } from "./indicators/computeIndicators.js";
 import { percentileRank } from "./indicators/percentile.js";
 import { trailingReturn } from "./indicators/relativeStrength.js";
 import { cleanBars } from "./indicators/series.js";
+import { volumeRatioLatest } from "./indicators/volume.js";
 import type { DetectorsConfig, IndicatorFlags } from "./indicators/types.js";
 import { allDetectors } from "./detectors/index.js";
 import type { DetectorResult } from "./detectors/IDetector.js";
@@ -77,6 +78,20 @@ import { rsLineNewHigh } from "./indicators/rsLineNewHigh.js";
 import { fetchOptionsChain } from "../data/options/fetchOptionsChain.js";
 import { computeOptionsIntelligence } from "../data/options/computeOptionsIntelligence.js";
 import type { OptionsConfig, OptionsIntelligence } from "../data/options/types.js";
+import vitalityConfigJson from "../../config/vitality.json" with { type: "json" };
+import { computeVitality } from "./vitality/computeVitality.js";
+import type { VitalityConfig } from "./vitality/computeVitality.js";
+import contagionConfigJson from "../../config/contagion.json" with { type: "json" };
+import {
+  computeSectorLeaders,
+  computeSectorMedianHistoricalVol,
+  evaluateContagionCandidate,
+  computeBeta60d,
+  historicalVolatility,
+  brokeAboveTrailingHigh,
+  latestDailyReturn,
+} from "./detectors/contagion/index.js";
+import type { ContagionConfig, ContagionCandidateInput, LeaderScanInput, SectorLeaderInfo } from "./detectors/contagion/index.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
@@ -95,6 +110,9 @@ const hotSectorsConfig = hotSectorsConfigJson as HotSectorsConfig;
 const creditConfig = creditConfigJson as CreditRegimeConfig;
 const FRED_HY_OAS_SERIES_ID = "BAMLH0A0HYM2";
 const card09Config = card09ConfigJson as LatentAccumulationConfig & InsiderWeightingConfig & OptionsConfig;
+const vitalityConfig = vitalityConfigJson as VitalityConfig;
+const contagionConfig = contagionConfigJson as ContagionConfig;
+const CONTAGION_BUCKET_ID = "sector_contagion";
 
 /**
  * TASK_CARD_06 SCOPE 2: maps each named pipeline segment (marked via
@@ -286,6 +304,10 @@ export interface ScreenRunResult {
     /** TASK_CARD_02 DONE-WHEN: each bucket must have a non-zero hit count, or this run's output must explain why. */
     detectorSummary: Record<string, { triggeredCount: number }>;
     zeroHitBucketsNote: string | null;
+    /** TASK_CARD_10 Part A/D: gate-passed symbols excluded from candidates/watchlist by the vitality floor - never fed into candidates/watchlist, tracked here so a future monthly review can judge "is the floor too strict" per the card's own stated purpose. */
+    vitalityExcludedCount: number;
+    /** TASK_CARD_10 Part B/D: every sector this run marked event_driven this run (a stage-1 leader was found). */
+    eventDrivenSectors: Array<{ sector: string; leaderTicker: string; leaderMovePct: number; sectorEventDate: string }>;
     /** TASK_CARD_03 SCOPE 1: size of the "候选" pool that received fundamental-flag enrichment (bucket-triggered symbols only - see ai/decisions.md). */
     fundamentalsCandidatePoolSize: number;
     fundamentalsFetchFailures: string[];
@@ -479,8 +501,18 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
 
   console.error(`[screen] Phase indicators: computing technical indicators for ${gatePassed.length} symbols...`);
   const flagsBySymbol = new Map<string, IndicatorFlags>();
+  // TASK_CARD_10 Part A/B: vitality and contagion stage-1 raw signals are
+  // computed here, reusing the OHLCV bars already loaded for indicators in
+  // this same loop - no new network call. `contagionRawBySymbol` carries
+  // stage-2/3 inputs (RVOL, historicalVol, beta60d) forward to the
+  // detector-merge loop below, once sector leaders are known.
+  const vitalityBySymbol = new Map<string, ReturnType<typeof computeVitality>>();
+  const leaderScanInputs: LeaderScanInput[] = [];
+  const contagionRawBySymbol = new Map<string, { dailyReturn: number | null; return3d: number | null; rvol: number | null; historicalVol: number | null; beta60d: number | null }>();
+
   for (const { symbol } of gatePassed) {
     const ohlcv = checkpoint.enrichResults[symbol]?.ohlcv ?? [];
+    const clean = cleanBars(ohlcv);
     const flags = computeIndicators(ohlcv, combinedDetectorsConfig, card09Config);
 
     const cluster = insiderClusters.get(symbol);
@@ -489,7 +521,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     flags.insiderClusterLagDays = cluster?.lagDays ?? null;
     flags.insiderClusterWeightedScore = cluster?.weightedScore ?? null;
 
-    flags.rsLineNewHigh = rsLineNewHigh(cleanBars(ohlcv), spyBarsForRsLine, card09Config.latentAccumulation.rsLineTradingDays, flags.pctOf52WeekHigh !== null && flags.pctOf52WeekHigh >= 1);
+    flags.rsLineNewHigh = rsLineNewHigh(clean, spyBarsForRsLine, card09Config.latentAccumulation.rsLineTradingDays, flags.pctOf52WeekHigh !== null && flags.pctOf52WeekHigh >= 1);
 
     const trendResult = computeInstitutionalTrend(checkpoint.institutionalHistory[symbol] ?? [], card04Config);
     flags.institutionalTrend = trendResult.trend;
@@ -506,7 +538,36 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     }
 
     flagsBySymbol.set(symbol, flags);
+
+    vitalityBySymbol.set(symbol, computeVitality(clean, vitalityConfig));
+
+    const dailyReturn = latestDailyReturn(clean);
+    const return3d = trailingReturn(clean.map((b) => b.close), 3);
+    const rvolForContagion = volumeRatioLatest(clean, contagionConfig.contagion.leader.rvolAvgWindow);
+    const brokeTrailingHigh = brokeAboveTrailingHigh(clean, contagionConfig.contagion.leader.breakoutLookbackDays);
+    const historicalVol = historicalVolatility(clean, contagionConfig.contagion.satellite.betaLookbackDays);
+    const beta60d = computeBeta60d(clean, spyBarsForRsLine, contagionConfig.contagion.satellite.betaLookbackDays);
+
+    contagionRawBySymbol.set(symbol, { dailyReturn, return3d, rvol: rvolForContagion, historicalVol, beta60d });
+
+    const sector = checkpoint.enrichResults[symbol]?.sector;
+    if (sector !== undefined) {
+      leaderScanInputs.push({
+        symbol,
+        sector,
+        latestDate: clean.length > 0 ? clean[clean.length - 1].date : null,
+        dailyReturn,
+        return3d,
+        rvol: rvolForContagion,
+        brokeTrailingHigh,
+      });
+    }
   }
+
+  const sectorLeadersByName = computeSectorLeaders(leaderScanInputs, contagionConfig);
+  const sectorMedianHistoricalVol = computeSectorMedianHistoricalVol(
+    leaderScanInputs.map((i) => ({ sector: i.sector, historicalVol: contagionRawBySymbol.get(i.symbol)?.historicalVol ?? null })),
+  );
 
   // RS percentile ranking is cross-symbol ("全宇宙" = every symbol in this
   // run's gate-passed set, not segmented by STANDARD/SMALL_SPEC), so it
@@ -526,6 +587,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   console.error(`[screen] Phase detectors: running ${allDetectors.length} detectors...`);
   const detectorSummary: Record<string, { triggeredCount: number }> = {};
   for (const d of allDetectors) detectorSummary[d.id] = { triggeredCount: 0 };
+  detectorSummary[CONTAGION_BUCKET_ID] = { triggeredCount: 0 };
 
   // claude_code_design_draft.md §1.1: every detector's full per-condition
   // breakdown is needed later ONLY for the narrow candidate+watchlist pool
@@ -534,6 +596,10 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   // on ScreenOutputSymbol/screen_run.json, so the full-universe (~3350
   // symbols) persisted output size is unaffected by this addition.
   const detectorResultsBySymbol = new Map<string, DetectorResult[]>();
+  // TASK_CARD_10 Part B/D: only populated for symbols that actually
+  // triggered sector_contagion - looked up later when building payload
+  // candidates (Part D's contagion fields).
+  const contagionEvaluationBySymbol = new Map<string, ReturnType<typeof evaluateContagionCandidate>>();
 
   const symbols: ScreenOutputSymbol[] = gatePassed.map(({ symbol, profile, speculative, quote }) => {
     const raw = universeBySymbol.get(symbol)!;
@@ -541,6 +607,48 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     const flags = flagsBySymbol.get(symbol)!;
 
     const results: DetectorResult[] = allDetectors.map((d) => d.detect(flags, profile, combinedDetectorsConfig));
+
+    // TASK_CARD_10 Part B: cross-symbol stage-1 leader lookup was already
+    // done above (sectorLeadersByName) - this is stage 2/3, per symbol.
+    // Not an IDetector (needs the sector's leader, which a single-symbol
+    // interface can't supply - see contagion/types.ts's own doc comment),
+    // so it's merged into `results`/buckets/bucketScores here rather than
+    // folded into the `allDetectors.map` line above.
+    const sector = enrich?.sector;
+    const leader: SectorLeaderInfo | undefined = sector !== undefined ? sectorLeadersByName.get(sector) : undefined;
+    const raw2 = contagionRawBySymbol.get(symbol);
+    const vitality = vitalityBySymbol.get(symbol)!;
+    if (sector !== undefined && raw2 !== undefined) {
+      const smaStructureIntact =
+        flags.latestClose === null || (flags.sma50 === null && flags.sma200 === null)
+          ? null
+          : (flags.sma50 !== null && flags.latestClose >= flags.sma50) || (flags.sma200 !== null && flags.latestClose >= flags.sma200);
+      const input: ContagionCandidateInput = {
+        symbol,
+        sector,
+        dailyReturn: raw2.dailyReturn,
+        return3d: raw2.return3d,
+        rvol: raw2.rvol,
+        smaStructureIntact,
+        vitalityPassed: vitality.passed,
+        marketCap: quote.marketCap ?? null,
+        beta60d: raw2.beta60d,
+        historicalVol: raw2.historicalVol,
+        sectorMedianHistoricalVol: sectorMedianHistoricalVol.get(sector) ?? null,
+      };
+      const evaluation = evaluateContagionCandidate(input, leader, contagionConfig);
+      results.push({
+        detectorId: CONTAGION_BUCKET_ID,
+        triggered: evaluation.triggered,
+        strengthScore: evaluation.strengthScore,
+        evidence: evaluation.evidence,
+        conditions: evaluation.conditions,
+      });
+      if (evaluation.triggered) {
+        contagionEvaluationBySymbol.set(symbol, evaluation);
+      }
+    }
+
     detectorResultsBySymbol.set(symbol, results);
     const buckets: string[] = [];
     const bucketScores: Record<string, number> = {};
@@ -633,15 +741,26 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const runTimestamp = eventWindowNow.toISOString();
   const previousWatchlist = readPreviousWatchlistSymbols();
 
-  const selectableSymbols: SelectableSymbol[] = enrichedSymbols.map((s) => ({
-    symbol: s.symbol,
-    profile: s.profile,
-    buckets: s.buckets,
-    bucketScores: s.bucketScores,
-    flags: s.flags,
-  }));
+  // TASK_CARD_10 Part A / 修正案二十一: "未通过者:不进候选,不进观察哨" -
+  // filtered out HERE, right before selection, not from `symbols`/
+  // `enrichedSymbols` themselves (sector footprints/flow/output still see
+  // the full gate-passed population; only candidate/watchlist eligibility
+  // is gated).
+  const vitalityExcludedCount = [...vitalityBySymbol.values()].filter((v) => !v.passed).length;
+  const eventDrivenSectors = [...sectorLeadersByName.values()]
+    .filter((l): l is SectorLeaderInfo & { leaderTicker: string; leaderMovePct: number; sectorEventDate: string } => l.eventDriven && l.leaderTicker !== null && l.leaderMovePct !== null && l.sectorEventDate !== null)
+    .map((l) => ({ sector: l.sector, leaderTicker: l.leaderTicker, leaderMovePct: l.leaderMovePct, sectorEventDate: l.sectorEventDate }));
+  const selectableSymbols: SelectableSymbol[] = enrichedSymbols
+    .filter((s) => vitalityBySymbol.get(s.symbol)?.passed === true)
+    .map((s) => ({
+      symbol: s.symbol,
+      profile: s.profile,
+      buckets: s.buckets,
+      bucketScores: s.bucketScores,
+      flags: s.flags,
+    }));
 
-  console.error(`[screen] Phase select: candidates + watchlist...`);
+  console.error(`[screen] Phase select: candidates + watchlist... (${vitalityExcludedCount} symbol(s) excluded by the vitality floor)`);
   const selectedCandidates: SelectedCandidate[] = selectCandidates(selectableSymbols, previousWatchlist, card05Config);
   const candidateSymbolSet = new Set(selectedCandidates.map((c) => c.symbol));
   const watchlistEntries: WatchlistEntry[] = selectWatchlist(selectableSymbols, candidateSymbolSet, combinedDetectorsConfig, card05Config);
@@ -751,6 +870,20 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       pivotLow: pivots.low,
       // TASK_CARD_09 Part B: candidate+watchlist pool only, computed after selection - see the fetch_options phase above.
       optionsIntelligence: optionsBySymbol.get(c.symbol)!,
+      // TASK_CARD_10 Part D: only present for a candidate that actually triggered sector_contagion.
+      contagion: (() => {
+        const evaluation = contagionEvaluationBySymbol.get(c.symbol);
+        if (!evaluation || !evaluation.triggered || evaluation.leaderTicker === null || evaluation.leaderMovePct === null || evaluation.lagGapPct === null || evaluation.sectorEventDate === null) {
+          return undefined;
+        }
+        return {
+          leaderTicker: evaluation.leaderTicker,
+          leaderMovePct: evaluation.leaderMovePct,
+          lagGapPct: evaluation.lagGapPct,
+          sectorEventDate: evaluation.sectorEventDate,
+          highBetaSatellite: evaluation.highBetaSatellite,
+        };
+      })(),
     };
   });
 
@@ -787,7 +920,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
 
   console.error(`[screen] Phase reporting: generating PAYLOAD, DISSENT PAYLOAD, HTML report...`);
   const atlasPayloadText = generateAtlasPayload({
-    runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length },
+    runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length, vitalityExcludedCount, eventDrivenSectors },
     marketRegime,
     creditRegime,
     smallSpecForcedDisabled,
@@ -945,6 +1078,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       gatesPassedCount: symbols.length,
       detectorSummary,
       zeroHitBucketsNote,
+      vitalityExcludedCount,
+      eventDrivenSectors,
       fundamentalsCandidatePoolSize: candidatePool.length,
       fundamentalsFetchFailures: checkpoint.fundamentalsFailures,
       sectorRankings,

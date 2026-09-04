@@ -74,3 +74,25 @@ test("a symbol already hitting some other bucket (fully triggered, just unselect
   const watchlist = selectWatchlist(symbols, new Set(), detectorsConfig, config);
   assert.equal(watchlist.length, 0); // not compression, and assignPrimaryBucket !== null excludes it from near-miss checks
 });
+
+// TASK_CARD_10 Part C / 修正案二十二: "传导桶的次优标的优先进观察哨" - ahead
+// of compression_unselected.
+test("sector_contagion runners-up get watchlist priority ahead of compression_unselected, sorted by score", () => {
+  const symbols: SelectableSymbol[] = [
+    sym("Comp1", ["volatility_compression_setup"], { volatility_compression_setup: 99 }),
+    sym("ContagionLow", ["sector_contagion"], { sector_contagion: 30 }),
+    sym("ContagionHigh", ["sector_contagion"], { sector_contagion: 80 }),
+  ];
+  const watchlist = selectWatchlist(symbols, new Set(), detectorsConfig, config);
+  assert.deepEqual(
+    watchlist.map((w) => w.symbol),
+    ["ContagionHigh", "ContagionLow", "Comp1"],
+  );
+  assert.equal(watchlist.find((w) => w.symbol === "ContagionHigh")!.reason, "contagion_unselected");
+});
+
+test("a sector_contagion symbol already selected as a candidate is not also added to the watchlist", () => {
+  const symbols: SelectableSymbol[] = [sym("AlreadyCandidate", ["sector_contagion"], { sector_contagion: 90 })];
+  const watchlist = selectWatchlist(symbols, new Set(["AlreadyCandidate"]), detectorsConfig, config);
+  assert.equal(watchlist.length, 0);
+});

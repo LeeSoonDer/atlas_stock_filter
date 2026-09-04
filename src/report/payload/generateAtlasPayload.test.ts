@@ -49,7 +49,7 @@ function candidate(overrides: Partial<PayloadCandidateInput> = {}): PayloadCandi
 }
 
 const baseInput: PayloadInput = {
-  runMeta: { timestamp: "2026-08-24T00:00:00Z", profileArg: "both", gatesPassedCount: 3352 },
+  runMeta: { timestamp: "2026-08-24T00:00:00Z", profileArg: "both", gatesPassedCount: 3352, vitalityExcludedCount: 0, eventDrivenSectors: [] },
   marketRegime: {
     asOf: "2026-08-24T00:00:00Z",
     spyLatestClose: 500, spySma200: 480, spyCloseVsSma200: "above", spySma200Slope: 1.2,
@@ -234,6 +234,34 @@ test("TASK_CARD_09 Part B: available options intelligence renders the 4 metrics 
   assert.ok(output.includes("较上次运行变化: 300"));
 });
 
+test("TASK_CARD_10 Part D: candidate line includes all 5 contagion fields when the candidate triggered sector_contagion", () => {
+  const input: PayloadInput = {
+    ...baseInput,
+    candidates: [candidate({ contagion: { leaderTicker: "LEADCO", leaderMovePct: 0.15, lagGapPct: 0.12, sectorEventDate: "2026-08-20", highBetaSatellite: true } })],
+  };
+  const output = generateAtlasPayload(input);
+  assert.ok(output.includes("leader_ticker=LEADCO"));
+  assert.ok(output.includes("leader_move_pct=15.00%"));
+  assert.ok(output.includes("lag_gap_pct=12.00%"));
+  assert.ok(output.includes("sector_event_date=2026-08-20"));
+  assert.ok(output.includes("high_beta_satellite=true"));
+});
+
+test("TASK_CARD_10 Part D: no contagion section rendered for a candidate that never triggered sector_contagion", () => {
+  const output = generateAtlasPayload(baseInput); // default fixture candidate has no `contagion` field
+  assert.ok(!output.includes("leader_ticker="));
+});
+
+test("TASK_CARD_10 Part D: runMeta surfaces vitalityExcludedCount and eventDrivenSectors", () => {
+  const input: PayloadInput = {
+    ...baseInput,
+    runMeta: { ...baseInput.runMeta, vitalityExcludedCount: 42, eventDrivenSectors: [{ sector: "Technology", leaderTicker: "LEADCO", leaderMovePct: 0.15, sectorEventDate: "2026-08-20" }] },
+  };
+  const output = generateAtlasPayload(input);
+  assert.ok(output.includes("活跃度地板拦掉标的数: 42"));
+  assert.ok(output.includes("Technology: leader=LEADCO"));
+});
+
 test("TASK_CARD_09 MUST-NOT: no directional/counterparty wording anywhere in a generated payload (whale/insider-tip class phrases)", () => {
   const input: PayloadInput = {
     ...baseInput,
@@ -245,6 +273,8 @@ test("TASK_CARD_09 MUST-NOT: no directional/counterparty wording anywhere in a g
           putCallRatio: 0.2, putCallRatioChange: -0.3,
           atmImpliedVol: 0.8, ivMove: 0.3, availability: "可得",
         },
+        // TASK_CARD_10 Part B/D MUST-NOT: "应用层判断传导逻辑是否成立".
+        contagion: { leaderTicker: "LEADCO", leaderMovePct: 0.15, lagGapPct: 0.12, sectorEventDate: "2026-08-20", highBetaSatellite: true },
       }),
     ],
   };

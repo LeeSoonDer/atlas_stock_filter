@@ -487,4 +487,38 @@ Verification: 249 个既有单测保持全绿(两处修复均未破坏任何已�
 
 Tradeoff: `IMPLAUSIBLE_IV_FLOOR = 0.01` 这个阈值本身是根据本次真实观测(0.00001 占位符 vs 0.19 真实值之间有巨大数量级落差)拍板的,没有一个"官方"的、Yahoo 文档写明的占位符定义 - 属于本会话新增的、已披露的启发式判断,不是逐字来自卡片或修正案的规定。若未来这个免费数据源的占位符行为发生变化(比如变成用 `null` 而不是 `0.00001` 表示占位),这个 1% 地板本身不会造成新的错误(真实 IV 极少低于1%,即使误判也是保守方向 - 少报一个真实的极端低波动数字,而不是多报一个假数字),但如果 Yahoo 反过来开始用 0.5% 这种介于占位符与真实值之间的值,现在的地板可能需要重新校准。
 
+## 2026-09-03 - TASK_CARD_10 DONE(活跃度地板 + 板块传导桶 + 席位再分配),授权:第六号修正案
+
+Decision: 项目所有者直接指示"读 cards/TASK_CARD_10.md 完整执行,先读 constitution/ATLAS_AMENDMENT_NO6_CONTAGION.md 作为授权依据",优先级标为高(修复首次真实运行暴露的结构性缺陷:全部候选量比均低于1,产出死水标的)。四个 Part 全部完成,单一提交(b327161,项目所有者明确要求单一提交而非逐 Part 提交 - 见下方"commit per scope item"的落地方式说明)。
+
+**Part A 活跃度地板** (`src/screen/vitality/computeVitality.ts`):`rvol_median_10d`(近10日相对成交量中位数)与 `rvol_active_days_20d`(近20日内 RVOL>1.2 的天数)双阈值(config/vitality.json,`medianMin: 0.8`/`activeDaysMin: 3`),两者都满足才通过。在四桶检测之后、`selectCandidates`/`selectWatchlist` 之前对全部 gate-passed 标的执行,未通过者被从候选/观察哨池过滤掉,但仍留在 `symbols`/`enrichedSymbols`(板块足迹、板块资金流等全宇宙统计不受影响,只有候选/观察哨资格被卡)。
+
+**Part B 板块传导桶** (`src/screen/detectors/contagion/`):三阶段检测无法套用现有 `IDetector` 单标的接口(阶段1需要跨标的的板块级龙头识别),因此**没有**实现 `IDetector`,而是作为独立的纯函数模块(`computeSectorLeaders` 阶段1、`evaluateContagionCandidate` 阶段2+3),在 `pipeline.ts` 里手工合并进 `buckets`/`bucketScores`/`detectorResultsBySymbol`(构造一个形状兼容 `DetectorResult` 的对象 push 进去,复用既有的 footprint 合并/渲染管线,不需要改 `mergeFootprintDetail`)。几个未在卡片/修正案原文中逐字规定、本会话现场拍板并已披露的解释选择:
+* **龙头对比口径**:卡片"同期涨幅显著落后龙头"没规定用哪个时间窗口比。做法是龙头在阶段1究竟是靠"单日≥5%"还是"3日累计≥8%"触发,就记录该龙头的 `leaderMoveBasis`("daily"或"3d"),阶段2对候选个股的滞后幅度比较**用同一种口径**(daily比daily,3d比3d),而不是混用不同窗口的百分比硬凑差值。
+* **beta 与历史波动率的板块中位数**:`computeSectorMedianHistoricalVol` 的分母是**该板块被扫描到的全部标的**(与阶段1龙头扫描同一人群),不是只取传导候选子集 - 卡片"历史波动率高于板块中位数1.5倍"字面上说的是"板块"而非"候选子集",子集统计量在标的数少时不稳定。
+* **RVOL 共用口径**:`config/contagion.json` 新增独立的 `leader.rvolAvgWindow`(=50),没有复用 `detectors.json` 的 `volumeAvgWindowLong` 常量引用(即使当前数值恰好相同)- 两者是概念上独立的配置项,未来任一方调整都不会意外牵动另一方。
+* **strengthScore 公式**:卡片没规定传导桶的桶内排序分数怎么算。仿照 `momentumBreakoutDetector` 的既有模式(两个归一化 margin 的平均值,各自封顶3倍阈值):滞后幅度超出阈值的比例 + RVOL超出阈值的比例,平均后乘100。仅用于桶内排序,不影响 `triggered`。
+
+**Part C 候选席位再分配** (`src/screen/select/selectCandidates.ts`/`selectWatchlist.ts`):**发现卡片原文数字与当前仓库真实状态不一致,已披露并按修正案原文而非卡片数字实现**——卡片写"传导桶固定占2至3席...原四桶争夺剩余2至3席",这组数字要凑整只在 `maxCandidates=5` 时成立;但 `config/card05.json` 的 `maxCandidates` 早在 TASK_CARD_07(commit 208fdaa)就已从5改成3(该卡片自己的两层候选架构决策,与本卡片无关)。逐字实现卡片的"2-3"会在当前 `maxCandidates=3` 下要么让传导桶独占全部3席(违反"原四桶继续争夺剩余席位"的精神),要么无法凑出任何一个自洽的数字。改为直接实现修正案二十二的字面表述——"板块传导桶在候选选取中占据**至少一半**席位"——用 `Math.ceil(config.select.maxCandidates / 2)` 动态计算预留席位数(不是写死的常量),不生搬卡片的"2-3"。`maxCandidates=3` 时算出预留2席,`maxCandidates=5` 时算出预留3席(与卡片数字巧合吻合)——两条依据(修正案的抽象原则 vs 卡片的具体数字)在两种取值下从数学关系上自动调和,不需要二选一让步。传导桶命中不足预留席位数时按实际数量填充(不留空位等待);零命中时全部席位回落给原四桶轮询,与 CARD 05/07 既有行为逐字不变(6条既有 select 单测原样通过,零改动验证)。观察哨新增 `contagion_unselected` 优先通道,排在 `compression_unselected` 之前。
+Future implications: 若日后 `maxCandidates` 再次调整(比如改回5或改成其他值),传导桶预留席位数会自动跟着变,不需要同步改这段代码 - 但如果项目所有者的真实意图其实是"固定绝对数字2-3"而不是"maxCandidates的一半",需要回来改这里。
+
+**Part D 报告/payload** (`src/report/`):传导候选卡片新增专属"龙头XXX涨Y%→本标的仅涨Z%,滞后W%"陈述行 + 独立桶颜色圆点(`--bucket-contagion`,红色系但与卫星警示的红色不同色阶避免混淆),`high_beta_satellite` 用红色(`--neg`,而非既有 `tier-warn` 用的琥珀色 `--warn`)徽章渲染,字面对应卡片"显著红色警示"(既有 SMALL_SPEC/风险等级等徽章都是琥珀色,只有卫星警示是红色,保持视觉层级)。Payload 新增"活跃度地板/板块传导概览"小节(拦掉数量 + 全部 event_driven 板块清单)供 Radar 核实传导叙事,以及每个候选自己的 `leader_ticker`/`leader_move_pct`/`lag_gap_pct`/`sector_event_date`/`high_beta_satellite` 五个字段,措辞明确写"应用层不作判断"(修正案二十二"叙事验证移交"条款)。DISSENT payload 未改动 - 类型层面的隔离保证(`DissentInputCandidate` 只能装 symbol+primaryBucket)本身就已经防住了 contagion 证据泄漏,真实生成的 DISSENT payload 已核对(见下方真实验证)。
+
+**Live-validated on real production data**(2026-09-03,`npm run screen -- --profile both` 经 `scripts/validate-card10.ts` 跑通,3175 gate-passed,~966秒,其中抓取阶段占962秒 - 34935条 Form4 申报解析是主要耗时来源,与既有卡片记录的量级一致):
+* APGE(卡片原文点名的例子,RVOL 0.30)确认命中 `volatility_compression_setup` 但被活跃度地板拦下,不在候选也不在观察哨 - 卡片给的具体反例逐字验证通过。ALOT 本次未通过既有的市值/流动性宇宙闸(与本卡片无关,不在 gate-passed population 内)。
+* 2095/3175(66%)被地板拦掉 - 数字偏高但可解释:近3000+标的的全宇宙里,同时满足"10日RVOL中位数≥0.8 且 20日内至少3天RVOL>1.2"对多数非活跃个股本来就是较严格的双重门槛(修正案原文"阈值默认从严"+"宁可错过埋伏,不要死股"的既定代价),不是明显异常/疑似bug的比例。
+* 5个板块被判定 event_driven,龙头涨幅19.3%~76.4%,真实数据(非构造)。
+* 候选3席:2席传导桶(BTCS、CEPO,均 primaryBucketScore=100.0封顶)+ 1席动能突破(RCMT)- 与 `ceil(3/2)=2` 的公式结果逐字吻合。
+* 观察哨8席全部是 `contagion_unselected`(传导桶次优候选优先填满,原有的 compression_unselected/near_miss 两条通道本次因传导候选够多而完全没机会触发 - 这是既定优先级顺序的正确结果,不是逻辑遗漏)。
+* BTCS 真实渲染:龙头CYPH涨76.4%→本标的仅涨25.0%,滞后51.4%,`high_beta_satellite=true` 且**仍是候选#1**(未被排除,符合 MUST-NOT)。
+* 对三份真实生成文件(report.html/ATLAS_PAYLOAD.txt/ATLAS_DISSENT_PAYLOAD.txt)现场 grep 禁用措辞(巨鲸/内幕/whale/insider tip/押注/smart money),零命中;DISSENT payload 逐条核对 BTCS/CEPO 只泄漏 symbol+primaryBucket("sector_contagion"字符串本身),没有龙头/滞后幅度等证据字段。
+
+Verification: 51个新增单测(vitality 6、contagion模块36、select扩展6、report/payload 3,249→300全绿),`npx tsc --noEmit` clean。DONE-WHEN 全部7项逐条用真实数据核实(见上),MUST-NOT 全部4项核实(风险高波动大不预先排除、应用层不判断传导逻辑成立与否、无付费/爬取社交数据、无LLM调用)。
+
+**更正(同 CARD_07 的 208fdaa 先例,不 amend,原样记录于此)**:commit b327161 的提交信息末尾写的是"336/336 tests green",实际正确数字是 300(249+51)- 提交时口算错误,未核对就写进了提交信息。提交内容本身(代码与测试)不受影响,仅提交信息的这一个数字不准确,不重新提交/不 amend,以此条 decisions.md 记录为准。
+
+**"commit per scope item"的落地方式**:项目所有者最初指示逐 Part 提交,但 Part A(活跃度地板)与 Part B(板块传导)在 `pipeline.ts` 里共享同一个按标的遍历一次的循环(两者都需要同一批 `cleanBars()` 结果,分开会需要遍历两次或人为拆开一个本质上是同一段代码的改动),向项目所有者说明这一情况后,项目所有者选择直接单一提交(commit b327161),不再要求拆分。
+
+**发现但未处理(明确不在本卡片授权范围内,原样保留在工作区未提交)**:上一轮 `atlas_bootstrap_final` 同步进repo时一并带入的、与本卡片(修正案二十至二十三)无关的其他新增内容——`cards/TASK_CARD_08.md` 新增的"Part C 市场宽度"、`cards/TASK_CARD_09_STANDBY.md` 新增的 Part A 5-7项(ADX/回踩型/集中度警示,受修正案十八/十九管辖)、`constitution/ATLAS_AMENDMENT_NO5_SIGNAL_REFINEMENT.md` 的新增条款本身、`EXECUTION_RULES.md`(人工仓位管理SOP,非应用代码)、`UPGRADE_DEPLOYMENT_GUIDE.md` 的更新。均未 `git add`,未出现在本次提交里 - 需要项目所有者显式立项才处理。
+
 Future implications: 两次 checkpoint schema 迁移(`floatShares` 与 `accrualFlagAvailability`)现在是同一个模式的两个实例 - 未来任何一张 checkpoint 缓存表新增必填字段时,都应该照抄这个"用新字段本身的存在与否判定是否需要重新抓取"的模式,而不是假设"symbol 在缓存里出现过 = 数据是最新的"。

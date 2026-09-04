@@ -404,10 +404,62 @@
     checked against real generated artifacts (not just test assertions)
     from the third, clean live run (output/runs/2026-08-31_0905/).
 
+- TASK_CARD_10 (活跃度地板 + 板块传导桶 + 席位再分配), constitution Amendment
+  No.6 (修正案二十至二十三). DONE, priority=high per the card's own framing
+  (fixes the structural defect exposed by the system's first real run: every
+  candidate had RVOL < 1, all dead-water stocks). Single commit (b327161,
+  project owner explicitly chose one combined commit over per-Part commits
+  after being told Part A/B share one pipeline.ts loop by design).
+  - Part A (src/screen/vitality/): hard liquidity gate after detector
+    evaluation, before selection - rvol_median_10d >= 0.8 AND
+    rvol_active_days_20d >= 3, both required. Failing symbols excluded from
+    candidates/watchlist only (still counted in sector footprints/flow).
+  - Part B (src/screen/detectors/contagion/, the 5th bucket): NOT an
+    IDetector (needs cross-symbol sector-leader context a single-symbol
+    interface can't supply) - separate pure-function module
+    (computeSectorLeaders stage 1, evaluateContagionCandidate stage 2/3),
+    merged into buckets/bucketScores/detectorResultsBySymbol manually in
+    pipeline.ts. Beta-vs-SPY degrades to historicalVol-vs-sector-median per
+    the card's own 熔断 clause. high_beta_satellite is warning-only, never
+    excludes (筛选宽容度原则).
+  - Part C (src/screen/select/): sector_contagion reserves
+    ceil(maxCandidates/2) seats ahead of the original 4-bucket round robin -
+    implements Amendment 修正案二十二's literal "at least half" against the
+    CURRENT maxCandidates (3, since TASK_CARD_07 already lowered it from 5),
+    not the card's own stale "2-3 of 5" text - see ai/decisions.md's
+    2026-09-03 entry for the full reconciliation. Watchlist gives
+    contagion_unselected top priority.
+  - Part D (src/report/): contagion candidates get a dedicated leader/lag
+    line + red (not amber) high_beta_satellite badge, visually distinct
+    bucket color dot; payload carries all 5 contagion fields + a new
+    vitality/event-driven-sectors overview section.
+  - Live-validated on real production data (2026-09-03, 3175 gate-passed):
+    APGE (the card's own named example, RVOL 0.30) confirmed excluded from
+    candidates/watchlist; 2095/3175 (66%) excluded by the floor overall
+    (high but explainable - see decisions.md); 5 real event-driven sectors
+    detected; 2/3 candidate seats went to sector_contagion (BTCS/CEPO) with
+    correct leader/lag-gap figures, BTCS correctly flagged+kept as
+    high_beta_satellite; all 8 watchlist seats filled by contagion runners-
+    up; zero forbidden wording and DISSENT isolation intact in the real
+    generated artifacts (not just test assertions). 51 new tests (249->300,
+    all green), tsc clean.
+  - Found but explicitly NOT touched (outside this card's Amendment No.6
+    authorization, left uncommitted in the working tree): TASK_CARD_08.md's
+    new "Part C 市场宽度", TASK_CARD_09_STANDBY.md's new Part A items 5-7
+    (both governed by Amendment No.5's 修正案十八/十九), Amendment No.5's own
+    new clauses, EXECUTION_RULES.md (a human position-sizing SOP, not
+    application code), UPGRADE_DEPLOYMENT_GUIDE.md's update - all synced
+    into the repo alongside TASK_CARD_10/Amendment No.6 in an earlier turn
+    but out of scope for this card.
+
 ## In Progress
 - Nothing active. Awaiting the project owner's next instruction.
 
 ## Next Priorities
+0. If the project owner wants any of the "found but not touched" items
+   above acted on (TASK_CARD_08 Part C market breadth, TASK_CARD_09_STANDBY
+   Part A items 5-7, Amendment No.5's own new clauses), they need their own
+   explicit go-ahead - none are part of TASK_CARD_10's authorization.
 1. User should, at their own convenience, open a generated
    output/runs/<date>/report.html (or output/latest.html for the
    newest one) in a real browser and paste an
