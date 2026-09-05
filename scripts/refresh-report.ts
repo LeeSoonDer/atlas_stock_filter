@@ -184,6 +184,8 @@ async function main() {
     return { detail, strength };
   }
   const creditRegimeTight = run.runMeta.creditRegime?.label === "tight";
+  /** Mirrors config/card09.json's trendStrength.rangeBoundThreshold - this script reads saved run data only, so the threshold is restated rather than importing live config. */
+  const RANGE_BOUND_THRESHOLD = 20;
 
   const htmlCandidates: HtmlReportCandidateInput[] = run.selection.candidates
     .map((c: any) => {
@@ -208,6 +210,12 @@ async function main() {
         closes90d: closes90dFor(c.symbol),
         fmp: undefined,
         optionsIntelligence: UNAVAILABLE_OPTIONS_INTELLIGENCE,
+        // TASK_CARD_09_STANDBY item 5: re-derived from the saved run's own
+        // flags (a run saved before that card has no adx14 and gets `false`).
+        rangeBoundWarning:
+          (c.allBucketsHit ?? []).includes("momentum_breakout") &&
+          typeof s?.flags?.adx14 === "number" &&
+          s.flags.adx14 < RANGE_BOUND_THRESHOLD,
         footprintDetail: detail,
         footprintStrength: strength,
       };
@@ -238,6 +246,14 @@ async function main() {
     sectorFootprints: run.runMeta.sectorFootprints,
     sectorFlowScan: run.runMeta.sectorFlowScan,
     hotSectorDetail: run.runMeta.hotSectorDetail,
+    // TASK_CARD_08 Part C / item 7: a run saved before those cards recorded
+    // neither - an explicit "unknown" beats invented breadth numbers.
+    breadth: run.runMeta.breadth ?? {
+      pctAboveSma200: null, pctAboveSma50: null, newHighCount: 0, newLowCount: 0, newHighLowRatio: null,
+      state: "unknown" as const, breadthDivergence: false, sma200SampleSize: 0, sma50SampleSize: 0,
+      stateUnavailableReason: "This saved run predates TASK_CARD_08 Part C - no breadth data was recorded",
+    },
+    concentrationWarnings: run.runMeta.concentrationWarnings ?? [],
     candidates: htmlCandidates,
     watchlist: watchlistForHtml,
     promotedThisRun: run.selection.promotedThisRun,

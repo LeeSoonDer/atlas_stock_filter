@@ -60,6 +60,20 @@ export interface IndicatorFlags {
   aboveVwapStreak: boolean | null;
   /** TASK_CARD_09 Part A: upgraded from headcount to weighted score - see src/data/insiders/insiderWeighting.ts. Same availability semantics as insiderCluster (null/不可得 = no qualifying filing this run, not "zero score"). */
   insiderClusterWeightedScore: number | null;
+
+  /**
+   * TASK_CARD_09_STANDBY Part A items 5-6 / 修正案十八. Both are pure
+   * per-symbol OHLCV computations, so they live here alongside every other
+   * indicator - but neither is ever a bucket admission condition. ADX
+   * carries trend MAGNITUDE only, never direction (see adx.ts); the
+   * derived `range_bound_warning` shown on a candidate is computed at the
+   * report/payload layer from adx14 + momentum-bucket membership, NOT
+   * stored here, so there is structurally no path from it back into
+   * detector or selection logic.
+   */
+  adx14: number | null;
+  /** null = neither shape demonstrable from this symbol's data (never a defaulted label). Only meaningful for momentum-bucket hits - see entryStructure.ts. */
+  entryStructure: "breakout" | "pullback_to_ma" | null;
 }
 
 export interface DetectorsConfig {
@@ -115,5 +129,20 @@ export interface LatentAccumulationConfig {
     aboveVwapStreakDays: number;
     aboveVwapRollingWindow: number;
     strengthBonusPerFlag: number;
+  };
+  /** TASK_CARD_09_STANDBY Part A item 5 / 修正案十八. */
+  trendStrength: {
+    adxPeriod: number;
+    /** ADX below this reads as a range rather than a trend - the card's own 震荡区间警示 line. */
+    rangeBoundThreshold: number;
+    /** ADX above this reads as a real trend. Reported for context; nothing gates on it. */
+    trendingThreshold: number;
+  };
+  /** TASK_CARD_09_STANDBY Part A item 6 / 修正案十八. */
+  entryStructure: {
+    breakoutProximityPct: number;
+    pullbackMaBandPct: number;
+    pullbackVolumeContractionRatio: number;
+    pullbackVolumeAvgWindow: number;
   };
 }

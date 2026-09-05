@@ -9,6 +9,8 @@ import type { HtmlReportCandidateInput, HtmlWatchlistInput, ReportInput } from "
 
 const PLACEHOLDER = "待研究层填充";
 const FLOW_LABEL: Record<string, string> = { flow_in: "流入", flow_out: "流出", flat: "横盘", unknown: "不可得" };
+const BREADTH_LABEL: Record<string, string> = { healthy: "健康", narrowing: "收窄", weak: "疲弱", unknown: "不可得" };
+const ENTRY_STRUCTURE_LABEL: Record<string, string> = { breakout: "突破型(追高位)", pullback_to_ma: "回踩型(接回踩)" };
 const FLOW_CLASS: Record<string, string> = { flow_in: "in", flow_out: "out", flat: "flat", unknown: "flat" };
 
 /** BUCKET_ORDER's own 4 canonical ids, duplicated as a literal tuple here
@@ -98,6 +100,49 @@ function renderCreditWarning(input: ReportInput): string {
   return "";
 }
 
+/**
+ * TASK_CARD_08 Part C item 3 / 修正案十八: the divergence warning bar
+ * ("指数强但内部弱,个股突破可靠性下降"). Strictly a statement of two
+ * co-occurring, measured facts - the amendment's "严禁据此预测大盘走向"
+ * is why no wording here says or implies what happens next.
+ */
+function renderBreadthDivergenceWarning(input: ReportInput): string {
+  const b = input.breadth;
+  if (!b.breadthDivergence) return "";
+  return `
+<div class="breadth-warning-bar">
+  <span class="breadth-warning-label">⚠ 宽度背离</span>
+  <span class="breadth-warning-detail">指数处于200线上方,但仅 ${b.pctAboveSma200 === null ? "不可得" : `${b.pctAboveSma200.toFixed(1)}%`} 的标的站上自身200日均线(52周新高 ${b.newHighCount} / 新低 ${b.newLowCount}) · 个股突破可靠性下降</span>
+</div>`;
+}
+
+function renderBreadthBlock(input: ReportInput): string {
+  const b = input.breadth;
+  const stateText = b.state === "unknown" ? `不可得${b.stateUnavailableReason ? `(${escapeHtml(b.stateUnavailableReason)})` : ""}` : BREADTH_LABEL[b.state];
+  const stateClass = b.state === "healthy" ? "up" : b.state === "weak" ? "down" : "neu";
+  return `
+  <div class="s01-env-item"><span class="k">市场宽度</span><span class="v ${stateClass}">${escapeHtml(stateText)}<span style="font-size:11px;font-weight:400;color:var(--text-2);margin-left:6px">${b.pctAboveSma200 === null ? "" : `${b.pctAboveSma200.toFixed(0)}% 站上200线`}</span></span></div>
+  <div class="s01-env-item"><span class="k">52周新高/新低</span><span class="v" style="font-size:14px">${b.newHighCount} / ${b.newLowCount}<span style="font-size:11px;font-weight:400;color:var(--text-2);margin-left:6px">${b.pctAboveSma50 === null ? "" : `${b.pctAboveSma50.toFixed(0)}% 站上50线`}</span></span></div>`;
+}
+
+/**
+ * TASK_CARD_09_STANDBY Part A item 7 / 修正案十九. Renders the counted
+ * fact and nothing else: the amendment's boundary ("严禁给出任何仓位、
+ * 配置或规模建议——仓位属人类绝对领地") means no sizing verb may ever
+ * appear in this block.
+ */
+function renderConcentrationBlock(input: ReportInput): string {
+  if (input.concentrationWarnings.length === 0) return "";
+  const rows = input.concentrationWarnings
+    .map((w) => `<div class="concentration-row"><b>${escapeHtml(w.sector)}</b>: ${w.count} 只 — ${w.symbols.map(escapeHtml).join("、")}</div>`)
+    .join("");
+  return `
+<div class="concentration-note">
+  <div class="concentration-title">候选集中度(仅陈述事实)</div>
+  ${rows}
+</div>`;
+}
+
 function totalBucketHits(detectorSummary: Record<string, { triggeredCount: number }>): number {
   return Object.values(detectorSummary).reduce((a, v) => a + v.triggeredCount, 0);
 }
@@ -154,8 +199,10 @@ function render01(input: ReportInput): string {
     <div class="s01-env-item"><span class="k">VIX</span><span class="v">${fmt(r.vixCurrent)}<span style="font-size:11px;font-weight:400;color:var(--text-2);margin-left:6px">${escapeHtml(vixVsAvg)}</span></span></div>
     <div class="s01-env-item"><span class="k">领涨</span><span class="v" style="font-size:14px">${leading ? escapeHtml(leading.sector) : "不可得"}</span></div>
     <div class="s01-env-item"><span class="k">领跌</span><span class="v" style="font-size:14px">${lagging ? escapeHtml(lagging.sector) : "不可得"}</span></div>
+    ${renderBreadthBlock(input)}
     <div class="s01-env-note">${placeholderP(input.radarNarrative?.marketRecapParagraph)}</div>
   </div>
+  ${renderConcentrationBlock(input)}
 </div>`;
 }
 
@@ -198,6 +245,16 @@ function renderCandidateCard(c: HtmlReportCandidateInput, index: number, default
     c.fundamentals?.accrualFlag === true ? `<span class="tier-warn">应计质量存疑</span>` : "",
     c.fundamentals?.dilutionRisk === true ? `<span class="tier-warn">稀释风险(现金跑道${fmt(c.fundamentals.cashRunwayMonths, 1)}个月)</span>` : "",
     c.contagion?.highBetaSatellite === true ? `<span class="tier-warn-red">⚠ 高波动卫星标的(修正案二十:不因此排除,但须加倍审视)</span>` : "",
+    // TASK_CARD_09_STANDBY Part A items 5-6 / 修正案十八: structural markers
+    // on momentum-bucket hits. Flags only - never changed bucket admission.
+    c.rangeBoundWarning ? `<span class="tier-warn">⚠ 趋势强度不足(ADX ${fmt(c.flags.adx14, 1)},可能是震荡区间上沿)</span>` : "",
+    // A run saved BEFORE this card has no entryStructure key at all
+    // (undefined, not null), so this checks the resolved label rather than
+    // just "not null" - an unknown structure renders nothing, never a
+    // broken or invented badge.
+    c.allBucketsHit.includes("momentum_breakout") && c.flags.entryStructure && ENTRY_STRUCTURE_LABEL[c.flags.entryStructure]
+      ? `<span class="entry-structure">${escapeHtml(ENTRY_STRUCTURE_LABEL[c.flags.entryStructure!])}</span>`
+      : "",
   ].filter(Boolean);
 
   const hitCount = c.footprintDetail.filter((d) => d.status === "hit").length;
@@ -591,6 +648,7 @@ export function renderReport(input: ReportInput): string {
 <a id="top"></a>
 ${renderMasthead(input)}
 ${renderCreditWarning(input)}
+${renderBreadthDivergenceWarning(input)}
 <div class="wrap">
 ${render01(input)}
 ${render02(input)}

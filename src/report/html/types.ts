@@ -7,6 +7,7 @@ import type { FmpEnrichmentResult } from "../../data/enrich/types.js";
 import type { FootprintCondition } from "../../screen/detectors/IDetector.js";
 import type { FootprintStrength } from "../footprint/footprintStrength.js";
 import type { CreditRegimeSnapshot } from "../../screen/credit_regime/types.js";
+import type { BreadthSnapshot, ConcentrationWarning } from "../../screen/breadth/types.js";
 
 export interface HtmlReportCandidateInput extends PayloadCandidateInput {
   closes90d: number[];
@@ -98,6 +99,10 @@ export interface ReportInput {
   sectorFlowScan: SectorFlowEntry[];
   /** TASK_CARD_07 Part A/C: named hot sectors + any real sector flagged footprintAnomaly this run but not already named. */
   hotSectorDetail: HotSectorEntry[];
+  /** TASK_CARD_08 Part C / 修正案十八: market internals. Descriptive only - the amendment forbids deriving any market-direction call from it. */
+  breadth: BreadthSnapshot;
+  /** TASK_CARD_09_STANDBY Part A item 7 / 修正案十九: facts only, never sizing or allocation advice. */
+  concentrationWarnings: ConcentrationWarning[];
   candidates: HtmlReportCandidateInput[];
   watchlist: HtmlWatchlistInput[];
   promotedThisRun: string[];

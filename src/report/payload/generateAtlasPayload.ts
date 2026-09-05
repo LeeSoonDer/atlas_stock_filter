@@ -3,6 +3,8 @@ import type { HotSectorEntry, SectorFlowEntry } from "../../screen/sector_scan/t
 
 const FLOW_STATE_LABEL: Record<string, string> = { flow_in: "流入", flow_out: "流出", flat: "横盘", unknown: "不可得" };
 const CREDIT_LABEL: Record<string, string> = { loose: "宽松", neutral: "中性", tight: "收紧", unknown: "不可得" };
+const BREADTH_LABEL: Record<string, string> = { healthy: "健康", narrowing: "收窄", weak: "疲弱", unknown: "不可得" };
+const ENTRY_STRUCTURE_LABEL: Record<string, string> = { breakout: "突破型(追高位)", pullback_to_ma: "回踩型(接回踩)" };
 
 function fmtPct(v: number | null): string {
   return v === null ? "不可得" : `${(v * 100).toFixed(2)}%`;
@@ -86,6 +88,16 @@ function renderCandidate(c: PayloadCandidateInput): string[] {
   lines.push(`  shortInterestLagDays: ${fmt(c.flags.shortInterestLagDays)}`);
   lines.push("");
 
+  // TASK_CARD_09_STANDBY Part A items 5-6 / 修正案十八: structural markers
+  // for momentum-bucket hits. Flags only - neither changed this candidate's
+  // bucket admission.
+  if (c.allBucketsHit.includes("momentum_breakout")) {
+    lines.push("动能桶结构标记 (旗标,不改变桶准入):");
+    lines.push(`  adx14: ${fmt(c.flags.adx14)}${c.rangeBoundWarning ? " → range_bound_warning=true (趋势强度不足,可能是震荡区间上沿)" : ""}`);
+    lines.push(`  entry_structure: ${c.flags.entryStructure === null ? "不可得" : ENTRY_STRUCTURE_LABEL[c.flags.entryStructure]}`);
+    lines.push("");
+  }
+
   if (c.contagion) {
     const ct = c.contagion;
     lines.push("板块传导 (供研究层验证叙事是否成立,应用层不作判断):");
@@ -146,6 +158,30 @@ export function generateAtlasPayload(input: PayloadInput): string {
   lines.push(`领涨板块: ${r.leadingSectors.map((s) => s.sector).join(", ") || "无"}`);
   lines.push(`领跌板块: ${r.laggingSectors.map((s) => s.sector).join(", ") || "无"}`);
   lines.push("");
+
+  const b = input.runMeta.breadth;
+  lines.push("== 市场宽度 (修正案十八, 仅描述当前状态, 严禁据此预测大盘走向) ==");
+  if (b.state === "unknown") {
+    lines.push(`宽度状态: 不可得${b.stateUnavailableReason ? ` (${b.stateUnavailableReason})` : ""}`);
+  } else {
+    lines.push(`宽度状态: ${BREADTH_LABEL[b.state]}`);
+  }
+  lines.push(
+    `  站上200日均线: ${b.pctAboveSma200 === null ? "不可得" : `${b.pctAboveSma200.toFixed(1)}%`} (样本 ${b.sma200SampleSize} 只), 站上50日均线: ${b.pctAboveSma50 === null ? "不可得" : `${b.pctAboveSma50.toFixed(1)}%`} (样本 ${b.sma50SampleSize} 只)`,
+  );
+  lines.push(`  52周新高家数: ${b.newHighCount}, 新低家数: ${b.newLowCount}, 新高/新低比: ${b.newHighLowRatio === null ? "不可得(无新低)" : b.newHighLowRatio.toFixed(2)}`);
+  if (b.breadthDivergence) {
+    lines.push("  ⚠ breadth_divergence=true - 指数处于200线上方但市场内部宽度疲弱,个股突破可靠性下降(陈述当前状态,非方向预测)");
+  }
+  lines.push("");
+
+  if (input.runMeta.concentrationWarnings.length > 0) {
+    lines.push("== 候选集中度 (修正案十九, 仅陈述集中事实, 不含任何仓位建议) ==");
+    for (const w of input.runMeta.concentrationWarnings) {
+      lines.push(`  ${w.sector}: ${w.count} 只 (${w.symbols.join(", ")})`);
+    }
+    lines.push("");
+  }
 
   lines.push("== 活跃度地板 / 板块传导概览 (修正案二十一/二十二) ==");
   lines.push(`活跃度地板拦掉标的数: ${input.runMeta.vitalityExcludedCount} (不进候选,不进观察哨)`);

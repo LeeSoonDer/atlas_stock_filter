@@ -92,6 +92,9 @@ import {
   latestDailyReturn,
 } from "./detectors/contagion/index.js";
 import type { ContagionConfig, ContagionCandidateInput, LeaderScanInput, SectorLeaderInfo } from "./detectors/contagion/index.js";
+import breadthConfigJson from "../../config/breadth.json" with { type: "json" };
+import { computeBreadth, computeConcentrationWarnings } from "./breadth/computeBreadth.js";
+import type { BreadthConfig, BreadthSnapshot, ConcentrationWarning } from "./breadth/types.js";
 
 const CHECKPOINT_PATH = "output/checkpoint.json";
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
@@ -112,6 +115,7 @@ const FRED_HY_OAS_SERIES_ID = "BAMLH0A0HYM2";
 const card09Config = card09ConfigJson as LatentAccumulationConfig & InsiderWeightingConfig & OptionsConfig;
 const vitalityConfig = vitalityConfigJson as VitalityConfig;
 const contagionConfig = contagionConfigJson as ContagionConfig;
+const breadthConfig = breadthConfigJson as BreadthConfig;
 const CONTAGION_BUCKET_ID = "sector_contagion";
 
 /**
@@ -136,6 +140,7 @@ const PHASE_CATEGORY: Record<string, "universe" | "fetch" | "detect" | "report">
   fetch_fundamentals: "fetch",
   detect_sector_footprint: "detect",
   fetch_market_context: "fetch",
+  detect_breadth: "detect",
   detect_select: "detect",
   detect_sector_flow: "detect",
   fetch_fmp: "fetch",
@@ -308,6 +313,10 @@ export interface ScreenRunResult {
     vitalityExcludedCount: number;
     /** TASK_CARD_10 Part B/D: every sector this run marked event_driven this run (a stage-1 leader was found). */
     eventDrivenSectors: Array<{ sector: string; leaderTicker: string; leaderMovePct: number; sectorEventDate: string }>;
+    /** TASK_CARD_08 Part C / 修正案十八: market internals over the full gate-passed universe. Descriptive only - never a market-direction call. */
+    breadth: BreadthSnapshot;
+    /** TASK_CARD_09_STANDBY Part A item 7 / 修正案十九: sectors with >= the configured count of this run's candidate+watchlist symbols. Facts only, never sizing advice. */
+    concentrationWarnings: ConcentrationWarning[];
     /** TASK_CARD_03 SCOPE 1: size of the "候选" pool that received fundamental-flag enrichment (bucket-triggered symbols only - see ai/decisions.md). */
     fundamentalsCandidatePoolSize: number;
     fundamentalsFetchFailures: string[];
@@ -509,6 +518,11 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   const vitalityBySymbol = new Map<string, ReturnType<typeof computeVitality>>();
   const leaderScanInputs: LeaderScanInput[] = [];
   const contagionRawBySymbol = new Map<string, { dailyReturn: number | null; return3d: number | null; rvol: number | null; historicalVol: number | null; beta60d: number | null }>();
+  // TASK_CARD_08 Part C: the latest bar's own high/low, needed for the
+  // new-52-week-high/low breadth counts (a stock makes a new high when it
+  // TRADES at one - see src/screen/breadth/types.ts). Captured here, in
+  // the one loop that already has the cleaned bars in scope.
+  const latestBarBySymbol = new Map<string, { high: number | null; low: number | null }>();
 
   for (const { symbol } of gatePassed) {
     const ohlcv = checkpoint.enrichResults[symbol]?.ohlcv ?? [];
@@ -540,6 +554,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     flagsBySymbol.set(symbol, flags);
 
     vitalityBySymbol.set(symbol, computeVitality(clean, vitalityConfig));
+    const latestBar = clean.length > 0 ? clean[clean.length - 1] : null;
+    latestBarBySymbol.set(symbol, { high: latestBar?.high ?? null, low: latestBar?.low ?? null });
 
     const dailyReturn = latestDailyReturn(clean);
     const return3d = trailingReturn(clean.map((b) => b.close), 3);
@@ -724,6 +740,28 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   mark("fetch_market_context");
   const sectorRankBySector = new Map(sectorRankings.map((r) => [r.sector, r]));
 
+  // TASK_CARD_08 Part C / 修正案十八: market breadth over the FULL
+  // gate-passed universe, reusing indicators already computed above (no
+  // new network calls). Runs here, after fetchMarketContext, because the
+  // divergence check needs SPY's own position vs its 200-line.
+  const breadth = computeBreadth(
+    symbols.map((s) => ({
+      latestClose: s.flags.latestClose,
+      latestHigh: latestBarBySymbol.get(s.symbol)?.high ?? null,
+      latestLow: latestBarBySymbol.get(s.symbol)?.low ?? null,
+      sma50: s.flags.sma50,
+      sma200: s.flags.sma200,
+      week52High: s.flags.week52High,
+      week52Low: s.flags.week52Low,
+    })),
+    marketRegime.spyCloseVsSma200,
+    breadthConfig,
+  );
+  console.error(
+    `[screen] Phase breadth: state=${breadth.state} (${breadth.pctAboveSma200 === null ? "不可得" : `${breadth.pctAboveSma200.toFixed(1)}% >SMA200`}, 新高${breadth.newHighCount}/新低${breadth.newLowCount})${breadth.breadthDivergence ? " ⚠ breadth_divergence" : ""}`,
+  );
+  mark("detect_breadth");
+
   const eventWindowNow = new Date();
   const enrichedSymbols: ScreenOutputSymbol[] = symbols.map((s) => {
     const fundamentals = candidatePoolSet.has(s.symbol) ? checkpoint.fundamentalsResults[s.symbol] : undefined;
@@ -769,6 +807,23 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   mark("detect_select");
 
   const enrichedBySymbol = new Map(enrichedSymbols.map((s) => [s.symbol, s]));
+
+  // TASK_CARD_09_STANDBY Part A item 7 / 修正案十九: run-level concentration
+  // fact over this run's candidate + watchlist pool. Statement of fact only -
+  // the amendment's own boundary forbids this (or anything rendering it)
+  // from becoming a position-sizing or allocation suggestion.
+  const concentrationWarnings = computeConcentrationWarnings(
+    [...selectedCandidates.map((c) => c.symbol), ...watchlistEntries.map((w) => w.symbol)].map((symbol) => ({
+      symbol,
+      sector: enrichedBySymbol.get(symbol)?.sector,
+    })),
+    breadthConfig,
+  );
+  if (concentrationWarnings.length > 0) {
+    console.error(
+      `[screen] Phase concentration: ${concentrationWarnings.map((w) => `${w.sector}=${w.count}`).join(", ")} (同板块标的数达阈值,仅陈述事实)`,
+    );
+  }
 
   // TASK_CARD_07 Part A: full 11-sector flow scan + hot-sector detail
   // (科技/软件, AI基建, 航天/太空 + any real sector flagged footprintAnomaly
@@ -870,6 +925,13 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       pivotLow: pivots.low,
       // TASK_CARD_09 Part B: candidate+watchlist pool only, computed after selection - see the fetch_options phase above.
       optionsIntelligence: optionsBySymbol.get(c.symbol)!,
+      // TASK_CARD_09_STANDBY Part A item 5 / 修正案十八: derived at this
+      // presentation boundary from adx14 + momentum-bucket membership, so
+      // no detector or selection code can ever read it (旗标,不改变桶准入).
+      rangeBoundWarning:
+        c.allBucketsHit.includes("momentum_breakout") &&
+        s.flags.adx14 !== null &&
+        s.flags.adx14 < card09Config.trendStrength.rangeBoundThreshold,
       // TASK_CARD_10 Part D: only present for a candidate that actually triggered sector_contagion.
       contagion: (() => {
         const evaluation = contagionEvaluationBySymbol.get(c.symbol);
@@ -920,7 +982,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
 
   console.error(`[screen] Phase reporting: generating PAYLOAD, DISSENT PAYLOAD, HTML report...`);
   const atlasPayloadText = generateAtlasPayload({
-    runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length, vitalityExcludedCount, eventDrivenSectors },
+    runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length, vitalityExcludedCount, eventDrivenSectors, breadth, concentrationWarnings },
     marketRegime,
     creditRegime,
     smallSpecForcedDisabled,
@@ -963,6 +1025,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     sectorFootprints,
     sectorFlowScan,
     hotSectorDetail,
+    breadth,
+    concentrationWarnings,
     candidates: htmlCandidates,
     watchlist: watchlistForHtml,
     promotedThisRun,
@@ -1080,6 +1144,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
       zeroHitBucketsNote,
       vitalityExcludedCount,
       eventDrivenSectors,
+      breadth,
+      concentrationWarnings,
       fundamentalsCandidatePoolSize: candidatePool.length,
       fundamentalsFetchFailures: checkpoint.fundamentalsFailures,
       sectorRankings,

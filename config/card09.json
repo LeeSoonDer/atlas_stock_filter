@@ -25,5 +25,16 @@
   "fundamentals": {
     "accrualQualityThreshold": 0.1,
     "cashRunwayThresholdMonths": 12
+  },
+  "trendStrength": {
+    "adxPeriod": 14,
+    "rangeBoundThreshold": 20,
+    "trendingThreshold": 25
+  },
+  "entryStructure": {
+    "breakoutProximityPct": 0.97,
+    "pullbackMaBandPct": 0.04,
+    "pullbackVolumeContractionRatio": 0.9,
+    "pullbackVolumeAvgWindow": 20
   }
 }

@@ -51,6 +51,14 @@ a{color:inherit;text-decoration:none}
 .credit-warning-label{color:var(--neg);font-weight:700;font-size:13px}
 .credit-warning-detail{color:var(--text-2);font-size:12px}
 .credit-unknown-note{max-width:1180px;margin:0 auto;padding:6px 32px;color:var(--text-muted);font-size:11.5px;font-style:italic;border-bottom:1px solid var(--border-dim)}
+/* TASK_CARD_08 Part C: amber (not the credit bar's red) - a breadth divergence is a caution about breakout reliability, not the credit bar's hard SMALL_SPEC-disabling event. */
+.breadth-warning-bar{max-width:1180px;margin:0 auto;padding:10px 32px;background:color-mix(in srgb, var(--warn) 12%, transparent);border-bottom:1px solid var(--warn);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.breadth-warning-label{color:var(--warn);font-weight:700;font-size:13px}
+.breadth-warning-detail{color:var(--text-2);font-size:12px}
+.concentration-note{margin-top:14px;padding:10px 14px;background:var(--sunken);border:1px solid var(--border-dim);border-radius:var(--r-sm)}
+.concentration-title{color:var(--text-2);font-size:11.5px;font-weight:600;letter-spacing:.04em;margin-bottom:6px}
+.concentration-row{color:var(--text);font-size:12.5px;line-height:1.7}
+.concentration-row b{color:var(--warn)}
 
 /* ===== stratum head (repeated at the top of every numbered layer) ===== */
 .stratum{padding-top:40px}
@@ -117,6 +125,7 @@ a{color:inherit;text-decoration:none}
 .cand-metarow .sep{color:var(--border-strong)}
 .cand-metarow .tier-warn{color:var(--warn);font-weight:600}
 .cand-metarow .tier-warn-red{color:var(--neg);font-weight:700}
+.cand-metarow .entry-structure{color:var(--accent);font-weight:600}
 .cand-contagion-row{margin-top:2px;font-size:12px;color:var(--text-2)}
 .cand-contagion-row b{color:var(--neg)}
 

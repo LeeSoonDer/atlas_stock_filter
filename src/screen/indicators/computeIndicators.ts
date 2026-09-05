@@ -12,6 +12,8 @@ import { sidewaysBaseDays } from "./sidewaysBase.js";
 import { trailingReturn } from "./relativeStrength.js";
 import { volumeDryup } from "./volumeDryup.js";
 import { aboveVwapStreak } from "./aboveVwapStreak.js";
+import { adx } from "./adx.js";
+import { classifyEntryStructure } from "./entryStructure.js";
 
 /**
  * Computes every single-symbol indicator except rs3MonthPercentile/
@@ -87,5 +89,10 @@ export function computeIndicators(bars: OHLCVBar[], config: DetectorsConfig, lat
     volumeDryup: volumeDryup(clean, lc.volumeDryupLookbackDays, ic.volumeAvgWindowLong, lc.volumeDryupRatioThreshold),
     aboveVwapStreak: aboveVwapStreak(clean, lc.aboveVwapStreakDays, lc.aboveVwapRollingWindow),
     insiderClusterWeightedScore: null,
+    // TASK_CARD_09_STANDBY Part A items 5-6 / 修正案十八: pure OHLCV, so
+    // computed here with everything else. Neither is read by any detector's
+    // `triggered` expression - see this file's own IndicatorFlags comment.
+    adx14: adx(clean, latentConfig.trendStrength.adxPeriod),
+    entryStructure: classifyEntryStructure(clean, w52.pctOfHigh, sma20, sma50, latestClose, smaAlignedBullish, latentConfig),
   };
 }

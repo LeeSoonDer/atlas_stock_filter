@@ -23,6 +23,7 @@ const baseFlags: IndicatorFlags = {
   shortInterestChangePercent: 0, shortInterestDaysToCover: null, shortInterestPercentOfFloat: null,
   shortInterestLagDays: null, shortInterestAvailability: "可得",
   rsLineNewHigh: null, volumeDryup: null, aboveVwapStreak: null, insiderClusterWeightedScore: null,
+  adx14: null, entryStructure: null,
 };
 
 const config: DetectorsConfig = {

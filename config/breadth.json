@@ -1,0 +1,12 @@
+{
+  "breadth": {
+    "healthyAboveSma200Pct": 55,
+    "weakAboveSma200Pct": 35,
+    "newHighLowRatioNarrowingBand": 1.5,
+    "weakNewLowRatio": 2.0,
+    "minSymbolsForAggregation": 100
+  },
+  "concentration": {
+    "minSameSectorCount": 3
+  }
+}

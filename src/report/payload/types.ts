@@ -9,6 +9,7 @@ import type { ProfileName } from "../../screen/types.js";
 import type { HotSectorEntry, SectorFlowEntry } from "../../screen/sector_scan/types.js";
 import type { CreditRegimeSnapshot, RiskLevel } from "../../screen/credit_regime/types.js";
 import type { OptionsIntelligence } from "../../data/options/types.js";
+import type { BreadthSnapshot, ConcentrationWarning } from "../../screen/breadth/types.js";
 
 export interface PayloadCandidateInput {
   symbol: string;
@@ -37,6 +38,14 @@ export interface PayloadCandidateInput {
     sectorEventDate: string;
     highBetaSatellite: boolean;
   };
+  /**
+   * TASK_CARD_09_STANDBY Part A item 5 / 修正案十八: true only for a
+   * momentum-bucket hit whose ADX sits below the range-bound threshold.
+   * Derived HERE, at the presentation boundary, from flags.adx14 +
+   * bucket membership - deliberately not stored on IndicatorFlags, so no
+   * detector or selection code can read it (旗标, 不改变桶准入).
+   */
+  rangeBoundWarning: boolean;
 }
 
 export interface PayloadInput {
@@ -48,6 +57,10 @@ export interface PayloadInput {
     vitalityExcludedCount: number;
     /** TASK_CARD_10 Part B/D: every sector this run marked event_driven (a stage-1 leader was found), for Radar's contagion-narrative verification. */
     eventDrivenSectors: Array<{ sector: string; leaderTicker: string; leaderMovePct: number; sectorEventDate: string }>;
+    /** TASK_CARD_08 Part C / 修正案十八. */
+    breadth: BreadthSnapshot;
+    /** TASK_CARD_09_STANDBY Part A item 7 / 修正案十九. */
+    concentrationWarnings: ConcentrationWarning[];
   };
   marketRegime: MarketRegimeSnapshot;
   /** TASK_CARD_08 Part A. */

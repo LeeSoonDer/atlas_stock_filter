@@ -3,6 +3,12 @@ import assert from "node:assert/strict";
 import { generateAtlasPayload } from "./generateAtlasPayload.js";
 import type { PayloadCandidateInput, PayloadInput } from "./types.js";
 import type { IndicatorFlags } from "../../screen/indicators/types.js";
+import type { BreadthSnapshot } from "../../screen/breadth/types.js";
+
+const healthyBreadth: BreadthSnapshot = {
+  pctAboveSma200: 62, pctAboveSma50: 58, newHighCount: 40, newLowCount: 10, newHighLowRatio: 4,
+  state: "healthy", breadthDivergence: false, sma200SampleSize: 3000, sma50SampleSize: 3100, stateUnavailableReason: null,
+};
 
 const flags: IndicatorFlags = {
   sma20: 100, sma50: 95, sma200: 90, smaAlignedBullish: true,
@@ -19,6 +25,7 @@ const flags: IndicatorFlags = {
   shortInterestChangePercent: -20, shortInterestDaysToCover: 1.5, shortInterestPercentOfFloat: 12,
   shortInterestLagDays: 20, shortInterestAvailability: "可得",
   rsLineNewHigh: false, volumeDryup: false, aboveVwapStreak: false, insiderClusterWeightedScore: 2,
+  adx14: 30, entryStructure: "breakout",
 };
 
 function candidate(overrides: Partial<PayloadCandidateInput> = {}): PayloadCandidateInput {
@@ -32,6 +39,7 @@ function candidate(overrides: Partial<PayloadCandidateInput> = {}): PayloadCandi
     primaryBucketScore: 85,
     allBucketsHit: ["momentum_breakout"],
     promoted: false,
+    rangeBoundWarning: false,
     flags,
     fundamentals: undefined,
     eventWindow: undefined,
@@ -49,7 +57,7 @@ function candidate(overrides: Partial<PayloadCandidateInput> = {}): PayloadCandi
 }
 
 const baseInput: PayloadInput = {
-  runMeta: { timestamp: "2026-08-24T00:00:00Z", profileArg: "both", gatesPassedCount: 3352, vitalityExcludedCount: 0, eventDrivenSectors: [] },
+  runMeta: { timestamp: "2026-08-24T00:00:00Z", profileArg: "both", gatesPassedCount: 3352, vitalityExcludedCount: 0, eventDrivenSectors: [], breadth: healthyBreadth, concentrationWarnings: [] },
   marketRegime: {
     asOf: "2026-08-24T00:00:00Z",
     spyLatestClose: 500, spySma200: 480, spyCloseVsSma200: "above", spySma200Slope: 1.2,
@@ -260,6 +268,85 @@ test("TASK_CARD_10 Part D: runMeta surfaces vitalityExcludedCount and eventDrive
   const output = generateAtlasPayload(input);
   assert.ok(output.includes("活跃度地板拦掉标的数: 42"));
   assert.ok(output.includes("Technology: leader=LEADCO"));
+});
+
+test("TASK_CARD_08 Part C: breadth section renders the three measured readings plus the state", () => {
+  const output = generateAtlasPayload(baseInput);
+  assert.ok(output.includes("市场宽度"));
+  assert.ok(output.includes("宽度状态: 健康"));
+  assert.ok(output.includes("62.0%"));
+  assert.ok(output.includes("52周新高家数: 40, 新低家数: 10"));
+});
+
+test("TASK_CARD_08 Part C: breadth_divergence renders its warning line only when the flag is set", () => {
+  const withoutDivergence = generateAtlasPayload(baseInput);
+  assert.ok(!withoutDivergence.includes("breadth_divergence=true"));
+
+  const withDivergence = generateAtlasPayload({
+    ...baseInput,
+    runMeta: {
+      ...baseInput.runMeta,
+      breadth: { ...healthyBreadth, pctAboveSma200: 20, state: "weak", breadthDivergence: true, newHighCount: 3, newLowCount: 60, newHighLowRatio: 0.05 },
+    },
+  });
+  assert.ok(withDivergence.includes("breadth_divergence=true"));
+  assert.ok(withDivergence.includes("个股突破可靠性下降"));
+});
+
+test("TASK_CARD_08 Part C: an unknown breadth state renders 不可得 with its reason, never a fabricated percentage", () => {
+  const output = generateAtlasPayload({
+    ...baseInput,
+    runMeta: {
+      ...baseInput.runMeta,
+      breadth: { pctAboveSma200: null, pctAboveSma50: null, newHighCount: 0, newLowCount: 0, newHighLowRatio: null, state: "unknown", breadthDivergence: false, sma200SampleSize: 4, sma50SampleSize: 4, stateUnavailableReason: "too few symbols" },
+    },
+  });
+  assert.ok(output.includes("宽度状态: 不可得"));
+  assert.ok(output.includes("too few symbols"));
+});
+
+test("TASK_CARD_09_STANDBY item 7: concentration section lists sector counts and tickers when present, and is absent otherwise", () => {
+  const absent = generateAtlasPayload(baseInput);
+  assert.ok(!absent.includes("候选集中度"));
+
+  const present = generateAtlasPayload({
+    ...baseInput,
+    runMeta: { ...baseInput.runMeta, concentrationWarnings: [{ sector: "Technology", count: 4, symbols: ["A", "B", "C", "D"] }] },
+  });
+  assert.ok(present.includes("候选集中度"));
+  assert.ok(present.includes("Technology: 4 只 (A, B, C, D)"));
+});
+
+test("TASK_CARD_09_STANDBY item 7 MUST-NOT: the concentration block never contains position/sizing advice (仓位属人类绝对领地)", () => {
+  const output = generateAtlasPayload({
+    ...baseInput,
+    runMeta: { ...baseInput.runMeta, concentrationWarnings: [{ sector: "Technology", count: 4, symbols: ["A", "B", "C", "D"] }] },
+  });
+  const forbidden = /建议(仓位|配置|减仓|加仓)|不要(买|持有)|应(减|加)仓|最多(买|持)|分散(投资|配置)|降低仓位|控制仓位/;
+  assert.ok(!forbidden.test(output), `payload leaked position-sizing advice: ${output.match(forbidden)}`);
+});
+
+test("TASK_CARD_09_STANDBY items 5-6: momentum-bucket candidates carry adx14 and entry_structure; range_bound_warning only when flagged", () => {
+  const noWarning = generateAtlasPayload(baseInput); // fixture: momentum_breakout, adx14=30, rangeBoundWarning=false
+  assert.ok(noWarning.includes("动能桶结构标记"));
+  assert.ok(noWarning.includes("adx14: 30"));
+  assert.ok(noWarning.includes("entry_structure: 突破型(追高位)"));
+  assert.ok(!noWarning.includes("range_bound_warning=true"));
+
+  const warned = generateAtlasPayload({
+    ...baseInput,
+    candidates: [candidate({ rangeBoundWarning: true, flags: { ...flags, adx14: 14 } })],
+  });
+  assert.ok(warned.includes("range_bound_warning=true"));
+  assert.ok(warned.includes("震荡区间上沿"));
+});
+
+test("TASK_CARD_09_STANDBY items 5-6: a non-momentum candidate gets no structural-marker block at all", () => {
+  const output = generateAtlasPayload({
+    ...baseInput,
+    candidates: [candidate({ primaryBucket: "oversold_reversal", allBucketsHit: ["oversold_reversal"] })],
+  });
+  assert.ok(!output.includes("动能桶结构标记"));
 });
 
 test("TASK_CARD_09 MUST-NOT: no directional/counterparty wording anywhere in a generated payload (whale/insider-tip class phrases)", () => {

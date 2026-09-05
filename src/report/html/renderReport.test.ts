@@ -7,6 +7,12 @@ import type { SectorFlowEntry, HotSectorEntry } from "../../screen/sector_scan/t
 import type { FootprintCondition } from "../../screen/detectors/IDetector.js";
 import type { FootprintStrength } from "../footprint/footprintStrength.js";
 import { computeFootprintStrength } from "../footprint/footprintStrength.js";
+import type { BreadthSnapshot } from "../../screen/breadth/types.js";
+
+const healthyBreadth: BreadthSnapshot = {
+  pctAboveSma200: 62, pctAboveSma50: 58, newHighCount: 40, newLowCount: 10, newHighLowRatio: 4,
+  state: "healthy", breadthDivergence: false, sma200SampleSize: 3000, sma50SampleSize: 3100, stateUnavailableReason: null,
+};
 
 const flags: IndicatorFlags = {
   sma20: 100, sma50: 95, sma200: 90, smaAlignedBullish: true,
@@ -23,6 +29,7 @@ const flags: IndicatorFlags = {
   shortInterestChangePercent: -20, shortInterestDaysToCover: 1.5, shortInterestPercentOfFloat: 12,
   shortInterestLagDays: 20, shortInterestAvailability: "可得",
   rsLineNewHigh: false, volumeDryup: false, aboveVwapStreak: false, insiderClusterWeightedScore: 2,
+  adx14: 30, entryStructure: "breakout",
 };
 
 const sampleConditions: FootprintCondition[] = [
@@ -44,6 +51,7 @@ function candidate(overrides: Partial<HtmlReportCandidateInput> = {}): HtmlRepor
     primaryBucketScore: 80,
     allBucketsHit: ["oversold_reversal"],
     promoted: true,
+    rangeBoundWarning: false,
     flags,
     fundamentals: undefined,
     eventWindow: [{ type: "earnings", date: "2026-11-05", daysUntil: 72 }],
@@ -106,6 +114,8 @@ const baseInput: ReportInput = {
   sectorFootprints: [],
   sectorFlowScan: flowScan,
   hotSectorDetail: hotSectors,
+  breadth: healthyBreadth,
+  concentrationWarnings: [],
   candidates: [candidate()],
   watchlist: [watchlistEntry()],
   promotedThisRun: ["TESTX"],
@@ -270,6 +280,79 @@ test("TASK_CARD_09 Part B: available options intelligence renders the 4 metrics 
   assert.ok(html.includes("量比/OI峰值: 4.2"));
   assert.ok(html.includes("[活动异常]"));
   assert.ok(html.includes("汇总数据·无方向·无交易主体"));
+});
+
+test("TASK_CARD_08 Part C: breadth readings render in the environment block", () => {
+  const html = renderReport(baseInput);
+  assert.ok(html.includes("市场宽度"));
+  assert.ok(html.includes("健康"));
+  assert.ok(html.includes("62% 站上200线"));
+  assert.ok(html.includes("52周新高/新低"));
+});
+
+test("TASK_CARD_08 Part C: the divergence warning bar appears only when breadth_divergence is set", () => {
+  assert.ok(!renderReport(baseInput).includes("宽度背离"));
+
+  const html = renderReport({
+    ...baseInput,
+    breadth: { ...healthyBreadth, pctAboveSma200: 20, state: "weak", breadthDivergence: true, newHighCount: 3, newLowCount: 60, newHighLowRatio: 0.05 },
+  });
+  assert.ok(html.includes("宽度背离"));
+  assert.ok(html.includes("个股突破可靠性下降"));
+  assert.ok(html.includes("breadth-warning-bar"));
+});
+
+test("TASK_CARD_08 Part C: an unknown breadth state renders 不可得 rather than a fabricated percentage", () => {
+  const html = renderReport({
+    ...baseInput,
+    breadth: { pctAboveSma200: null, pctAboveSma50: null, newHighCount: 0, newLowCount: 0, newHighLowRatio: null, state: "unknown", breadthDivergence: false, sma200SampleSize: 4, sma50SampleSize: 4, stateUnavailableReason: "too few symbols" },
+  });
+  assert.ok(html.includes("不可得"));
+  assert.ok(!html.includes("% 站上200线"));
+});
+
+test("TASK_CARD_09_STANDBY item 7: concentration block lists sectors and tickers; absent when nothing is concentrated", () => {
+  assert.ok(!renderReport(baseInput).includes("候选集中度"));
+
+  const html = renderReport({
+    ...baseInput,
+    concentrationWarnings: [{ sector: "Technology", count: 4, symbols: ["AAA", "BBB", "CCC", "DDD"] }],
+  });
+  assert.ok(html.includes("候选集中度"));
+  assert.ok(html.includes("Technology"));
+  assert.ok(html.includes("AAA"));
+});
+
+test("TASK_CARD_09_STANDBY item 7 MUST-NOT: the report never turns a concentration fact into position/sizing advice", () => {
+  const html = renderReport({
+    ...baseInput,
+    concentrationWarnings: [{ sector: "Technology", count: 4, symbols: ["AAA", "BBB", "CCC", "DDD"] }],
+  });
+  const forbidden = /建议(仓位|配置|减仓|加仓)|不要(买|持有)|应(减|加)仓|最多(买|持)|分散(投资|配置)|降低仓位|控制仓位/;
+  assert.ok(!forbidden.test(html), `report leaked position-sizing advice: ${html.match(forbidden)}`);
+});
+
+test("TASK_CARD_09_STANDBY items 5-6: momentum candidates show the range-bound warning and entry-structure badge", () => {
+  const html = renderReport({
+    ...baseInput,
+    candidates: [
+      candidate({
+        primaryBucket: "momentum_breakout",
+        allBucketsHit: ["momentum_breakout"],
+        rangeBoundWarning: true,
+        flags: { ...flags, adx14: 14, entryStructure: "pullback_to_ma" },
+      }),
+    ],
+  });
+  assert.ok(html.includes("趋势强度不足"));
+  assert.ok(html.includes("震荡区间上沿"));
+  assert.ok(html.includes("回踩型(接回踩)"));
+});
+
+test("TASK_CARD_09_STANDBY items 5-6: a non-momentum candidate shows neither structural marker", () => {
+  const html = renderReport(baseInput); // fixture candidate is oversold_reversal
+  assert.ok(!html.includes("趋势强度不足"));
+  assert.ok(!html.includes("突破型(追高位)"));
 });
 
 test("TASK_CARD_09 MUST-NOT: no directional/counterparty wording anywhere in a generated report (whale/insider-tip class phrases)", () => {

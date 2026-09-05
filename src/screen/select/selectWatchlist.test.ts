@@ -21,6 +21,7 @@ const nullFlags: IndicatorFlags = {
   shortInterestChangePercent: null, shortInterestDaysToCover: null, shortInterestPercentOfFloat: null,
   shortInterestLagDays: null, shortInterestAvailability: "不可得",
   rsLineNewHigh: null, volumeDryup: null, aboveVwapStreak: null, insiderClusterWeightedScore: null,
+  adx14: null, entryStructure: null,
 };
 
 const detectorsConfig: DetectorsConfig = {

@@ -92,6 +92,8 @@ function footprintFor(symbol: string, buckets: string[]) {
 }
 
 const creditRegimeTight = run.runMeta.creditRegime?.label === "tight";
+/** Mirrors config/card09.json's trendStrength.rangeBoundThreshold - this script deliberately reads saved run data only, so the threshold is restated here rather than importing the live config. */
+const RANGE_BOUND_THRESHOLD = 20;
 
 const htmlCandidates: HtmlReportCandidateInput[] = run.selection.candidates
   .map((c: any) => {
@@ -116,6 +118,13 @@ const htmlCandidates: HtmlReportCandidateInput[] = run.selection.candidates
       closes90d: closes90dFor(c.symbol),
       fmp: undefined,
       optionsIntelligence: UNAVAILABLE_OPTIONS_INTELLIGENCE,
+      // TASK_CARD_09_STANDBY item 5: re-derived from the saved run's own
+      // flags, the same way pipeline.ts derives it - a run saved before
+      // that card has adx14 undefined and simply gets `false`.
+      rangeBoundWarning:
+        (c.allBucketsHit ?? []).includes("momentum_breakout") &&
+        typeof s?.flags?.adx14 === "number" &&
+        s.flags.adx14 < RANGE_BOUND_THRESHOLD,
       footprintDetail: detail,
       footprintStrength: strength,
     };
@@ -152,6 +161,16 @@ const reportInput: ReportInput = {
   sectorFootprints: run.runMeta.sectorFootprints,
   sectorFlowScan: run.runMeta.sectorFlowScan,
   hotSectorDetail: run.runMeta.hotSectorDetail,
+  // TASK_CARD_08 Part C / TASK_CARD_09_STANDBY item 7: a run saved before
+  // those cards has neither field - fall back to an explicit "unknown"
+  // snapshot with a stated reason rather than inventing breadth numbers
+  // this old run never measured.
+  breadth: run.runMeta.breadth ?? {
+    pctAboveSma200: null, pctAboveSma50: null, newHighCount: 0, newLowCount: 0, newHighLowRatio: null,
+    state: "unknown" as const, breadthDivergence: false, sma200SampleSize: 0, sma50SampleSize: 0,
+    stateUnavailableReason: "This saved run predates TASK_CARD_08 Part C - no breadth data was recorded",
+  },
+  concentrationWarnings: run.runMeta.concentrationWarnings ?? [],
   candidates: htmlCandidates,
   watchlist: watchlistForHtml,
   promotedThisRun: run.selection.promotedThisRun,
