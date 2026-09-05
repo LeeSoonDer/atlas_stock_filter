@@ -452,14 +452,69 @@
     into the repo alongside TASK_CARD_10/Amendment No.6 in an earlier turn
     but out of scope for this card.
 
+- Post-TASK_CARD_10 work done in other sessions (recorded here late - these
+  landed without a current_state.md update at the time; see ai/decisions.md's
+  2026-09-04 entry for the full reasoning):
+  - Two-way Supabase ledger sync + candidate/watchlist pushed as structured
+    data (b4ef7fd), so Cockpit/Stockpit's web UI can read a run without
+    touching this machine's filesystem.
+  - `web-integration` merged into `master` and the branch deleted (e930a20).
+    Atlas now has exactly one line of development - the long-lived branch had
+    already caused one silently-skipped Supabase push.
+  - Three-repo split recorded (93c297e) + the Stockpit handbook mirrored
+    (ce80eb4): Atlas (this repo) / Stockpit (new independent repo, forked
+    from Cockpit's web-integration line) / Cockpit (frozen at tag
+    cockpit-v1.0). Atlas and Stockpit couple only through Supabase table
+    shapes, with no code dependency.
+  - Note from that entry worth keeping visible: a real .git metadata
+    corruption event (config + two refs written as all-NULL bytes, likely an
+    abnormal shutdown or antivirus) was recovered from reflog with contents
+    verified. Watch for recurrence.
+
+- TASK_CARD_08 Part C (市场宽度) + TASK_CARD_09_STANDBY Part A items 5-7
+  (ADX / 进场结构 / 集中度警示), constitution Amendment No.5 修正案十八/十九.
+  DONE, single commit (8c8d88d). This was the last unimplemented scope
+  carried in by the atlas_bootstrap_final sync - the "found but not touched"
+  backlog TASK_CARD_10 deliberately left alone is now empty.
+  - src/screen/breadth/: % above SMA200/SMA50, 52-week new-high vs new-low
+    counts + ratio over the full gate-passed universe (reuses already-computed
+    indicators, zero new network calls), three-state classification, and
+    breadth_divergence when SPY is above its 200-line while internals read
+    weak. Symbols without a computable SMA200 are excluded from that
+    denominator rather than counted as "not above"; the real sample size is
+    disclosed.
+  - src/screen/indicators/adx.ts: Wilder's ADX(14), magnitude-only and
+    direction-free by construction. src/screen/indicators/entryStructure.ts:
+    breakout vs pullback_to_ma, breakout checked first, null when neither
+    shape is demonstrable.
+  - concentrationWarnings: per-sector counts over the candidate+watchlist
+    pool. Sector only - no universe-wide theme taxonomy exists in this repo,
+    and inventing one would be fabricating data.
+  - range_bound_warning is derived at the payload/report boundary from adx14
+    + bucket membership, deliberately NOT on IndicatorFlags, so no detector
+    or selection code can read it (旗标, 不改变桶准入).
+  - Live-validated on real data (2026-09-05, 3173 gate-passed). TWO real
+    defects found by that validation that neither tests nor typecheck could
+    catch - both fixed, both written up in ai/decisions.md:
+    (1) new-high/new-low counts were a measurement artifact (2 highs / 1 low
+    out of 3173 while 67.5% were above their SMA200 and 75 sat within 1% of
+    their high) because a CLOSE was compared against a max-of-HIGHS. Fixed to
+    the standard bar-based definition; same data then gave 103 / 24, ratio
+    4.29. The original followed this repo's own pctOf52WeekHigh >= 1
+    convention, which is correct for "is this symbol at its high" but wrong
+    for a breadth count.
+    (2) scripts/ is outside tsconfig (include: ["src"]), so adding two
+    required ReportInput fields broke preview-report.ts / refresh-report.ts
+    invisibly; a real-data run surfaced a crash on saved runs where
+    entryStructure is undefined rather than null.
+  - 39 new tests (300 -> 339, all green), tsc clean. refresh-report.ts was
+    typechecked but deliberately NOT executed (it writes to the shared
+    Supabase table).
+
 ## In Progress
 - Nothing active. Awaiting the project owner's next instruction.
 
 ## Next Priorities
-0. If the project owner wants any of the "found but not touched" items
-   above acted on (TASK_CARD_08 Part C market breadth, TASK_CARD_09_STANDBY
-   Part A items 5-7, Amendment No.5's own new clauses), they need their own
-   explicit go-ahead - none are part of TASK_CARD_10's authorization.
 1. User should, at their own convenience, open a generated
    output/runs/<date>/report.html (or output/latest.html for the
    newest one) in a real browser and paste an
@@ -501,6 +556,19 @@
    baseline. Once a real Radar/红队 cycle history exists (same gap as
    Next Priority item 1), it becomes possible to actually judge Part A/C's
    signal quality retroactively.
+7c. Reusable lesson from TASK_CARD_08 Part C's live validation: (a) scripts/
+   is NOT covered by tsconfig (include: ["src"]) - after adding any required
+   field to ReportInput/PayloadInput, actually RUN
+   `npx tsx scripts/preview-report.ts <a saved run dir>` before calling it
+   verified, because typecheck will not see those two scripts at all.
+   (b) Saved-run schema drift now has a second shape beyond "field missing":
+   "old value is undefined where new code assumes null". Render-layer guards
+   should check whether the resolved value is usable, not merely `!== null`.
+   (c) When reusing an existing convention from elsewhere in this repo,
+   re-check that the convention actually fits the new question -
+   pctOf52WeekHigh >= 1 is right for "is this symbol at its high" and wrong
+   for "how many symbols made new highs".
+
 7b. Reusable lesson from TASK_CARD_09's live validation, for any future
    card that adds a new required field to an existing checkpoint.json
    cache table (fundamentalsResults, enrichResults, institutionalHistory,

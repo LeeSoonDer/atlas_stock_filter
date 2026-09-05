@@ -540,3 +540,34 @@ Future implications: 两次 checkpoint schema 迁移(`floatShares` 与 `accrualF
 **过程中遭遇的 git 元数据损坏(与本次决策无关的机器层面事件)**:Atlas 仓库的 `.git/config`、`.git/refs/heads/master`、`.git/refs/remotes/origin/master` 三个文件被写成全 NULL 字节(文件系统层面损坏,非 git 逻辑错误)。`.git/objects` 完好无损,`git fsck` 除无害悬空对象外零报错。依据完好的 `.git/logs/HEAD`(reflog)重建了 config 与两个 ref,内容(账本 189 行、TASK_CARD_10 全部文件、300/300 测试)逐项复核无误。**这类损坏通常源于异常关机或杀毒/同步软件介入,值得留意是否复发。**
 
 Future implications: Atlas 从此只有 `master` 一条线,以后再做跨仓库联动改动时不要再开长期分支;需要隔离就用短生命周期分支并尽快合并。Stockpit 与 Atlas 之间只通过 Supabase 的表结构耦合,没有代码依赖——改动任一边的表结构时,两边都要同步(`supabase/schema.sql` 在 Stockpit 仓库,`src/ledger/supabaseSync.ts` 与 `src/report/supabase/pushRun.ts` 在本仓库)。
+
+## [2026-09-05] TASK_CARD_08 Part C + TASK_CARD_09_STANDBY 第5-7项 DONE(市场宽度 / ADX / 进场结构 / 集中度警示)
+
+**Decision**:项目所有者明确指示"实际动手做完待办里的功能",授权依据为第五号修正案的修正案十八(市场宽度与趋势强度)与修正案十九(候选集中度警示)——这批条款连同两张卡片的新增段落,是上一轮 `atlas_bootstrap_final` 同步带进来、TASK_CARD_10 执行时刻意未碰的最后一批未实现范围(当时记录为"发现但未处理")。单一提交 8c8d88d。
+
+**市场宽度**(`src/screen/breadth/`):站上200/50日均线百分比、52周新高与新低家数及比值,对全宇宙 gate-passed 标的聚合,复用本次 run 已算好的指标,零新增网络调用。三态判定(健康/收窄/疲弱)+ 背离标记(SPY 在自身200线上方而内部宽度疲弱)。**缺 SMA200 的标的从分母里剔除,而不是当作"未站上"计入** —— 该宇宙里大量年轻/小市值标的本就没有200日历史,把它们算作 miss 会系统性低估宽度;真实样本量(`sma200SampleSize`)一并披露,不是隐含在百分比里。
+
+**ADX**(`src/screen/indicators/adx.ts`):标准 Wilder ADX(14),沿用本 repo 既有的 atr.ts/rsi.ts 平滑写法。**只有强度、没有方向**(镜像的下跌趋势与上涨趋势得分完全相同,有单测断言)——这正是卡片把它当"震荡区间警示"而非多空信号用的原因。需要约 2 倍周期的历史(第二次平滑),不足则返回 null 而非降级估算。
+
+**进场结构**(`src/screen/indicators/entryStructure.ts`):突破型 vs 回踩型。**先判突破**:处在52周高位、同时又贴着上行 SMA20 的标的在强趋势里很常见,这种应算突破而不是回踩。回踩额外要求均线多头排列 + 贴近 SMA20/50 + 缩量,三者缺一返回 null,不给默认标签。
+
+**集中度警示**:**只按板块分组,不按"主题"**——本 repo 没有覆盖全宇宙的主题归属数据(`config/hot_sectors.json` 是手工维护的少量 ticker 篮子,不是分类体系),按臆造的主题标签分组等于编造数据。已披露,不是悄悄缩小范围。
+
+**range_bound_warning 的存放位置(架构决定)**:该派生布尔值**不写入 `IndicatorFlags`**,而是在 payload/report 边界上由 `flags.adx14` + 桶命中情况现算。理由:flags 是检测器与选取逻辑的输入,把一个"旗标"放进去,就为它反向影响桶准入留了结构性通道;放在展示层则该通道在结构上根本不存在,符合修正案十八"属旗标,不改变桶准入"。
+
+**真实数据验证发现的两个真实缺陷(单测与 typecheck 都抓不到)**:
+
+1. **新高/新低家数是测量假象,不是市场事实**。首次真实 run 报出 3173 只里只有 2 只创新高、1 只创新低,而同一份数据里 67.5% 的标的站上200日均线——两件事不可能同时为真。追查原因:`week52High` 是窗口内每日**最高价**的最大值(含当日),拿**收盘价**去比,只有"当天收在52周区间的最顶点"才算数。当场量化验证:75 只标的距其52周高点1%以内,却只有 2 只被计为新高。修正为拿**当日 K 线的最高/最低价**比(股票"触及"新高即为创新高,这才是宽度指标的标准口径),同一份真实数据立刻变成 103 新高 / 24 新低,比值 4.29,与"67.5% 站上200线"自洽。**值得记下的教训**:最初写成收盘价比较,是因为本 repo 既有的 `pctOf52WeekHigh >= 1`(pipeline.ts 里 rsLineNewHigh 就是这么判"个股自身是否创新高")正是这个口径——对"这一只是否在高位"它是对的,对"全市场有多少只创新高"它是错的。沿用既有惯例本身没错,但**惯例的适用边界要重新判断**,不能因为"仓库里就是这么写的"就免检。
+2. **`scripts/` 不在 tsconfig 的 `include` 里**(只含 `src`),所以给 `ReportInput` 加两个必填字段时,`preview-report.ts` 与 `refresh-report.ts` 静默损坏,typecheck 完全看不见。拿真实存档数据实跑 preview-report 才炸出来:**早于本卡片的存档 run 里 `entryStructure` 是 `undefined` 而非 `null`**,标签查表得到 undefined,`escapeHtml` 直接抛错。修了渲染处的判断(检查解析出的标签本身,而不是"不等于 null"),两个脚本也都改为回退到显式的 "unknown" 宽度快照 + 注明原因,而不是替一次从未测量过宽度的旧 run 编造数字。
+
+**DONE-WHEN 逐条用真实数据核实**(`output/runs/2026-09-05_1006/`):
+* ADX 正确性(卡片要求"用已知震荡股与趋势股各一只验证"):趋势股 PLTR adx=32.6(近30根 +38.4%,净变动/振幅=0.87)、T adx=30.5(近30根 +17.4%,0.93);震荡股 PG adx=5.3(近30根 -1.8%,振幅仅5.2%)、VZ adx=17.0(净变动/振幅=0.16)。**T 同时验证了方向无关性**:其6个月回报是 -9.2% 但近30根反转为 +17.4%,ADX 反映的是当前趋势强度而非方向,也不受更早那段行情影响。PG 的 adx=5.3 配上 -11% 的半年跌幅初看可疑,查证后确认是"早前下跌、近期走平",14根窗口的 ADX 本就该忽略更早的那段。
+* 进场结构:突破型抽查 ABNB/ACRS/ACT 均处52周高点的 97.3%~99.0%;回踩型抽查 ADAG/AGNC/AGYS 均为均线多头、贴近 SMA20(0.7%~3.8%)、成交量 0.21~0.63 倍且远离52周高点(78.3%~89.3%)。
+* 徽章渲染:本次 run 有 25 只标的命中动能桶,但**没有一只拿到候选席位**(传导桶预留席位 + 升级席位填满),所以真实报告里没出现这两个徽章。用这些真实标的的**真实实测值**(ITIC adx=12.5 触发 range_bound_warning、BOW entryStructure=pullback_to_ma)过一遍真实渲染器确认徽章正确出现——这是渲染路径的真实数据验证,不是"它们被选为候选"的说法。
+* MUST-NOT:对真实生成的 report.html / ATLAS_PAYLOAD.txt 现场 grep 仓位建议类措辞(修正案十九边界)与大盘方向预测措辞(修正案十八边界),均零命中。
+
+Verification: 新增 39 个单测(adx 5、entryStructure 8、breadth+concentration 12、payload 7、report 7),300→339 全绿,`npx tsc --noEmit` clean。两个 `scripts/` 文件因不在 tsconfig 内,单独用显式编译参数 typecheck 通过;`refresh-report.ts` **未实跑**——它会向共享 Supabase 写入,不在本次验证授权范围内,如实记录为"类型检查通过、未执行"。
+
+Tradeoff: 宽度三态的阈值(55%/35%/新低比2倍/新高新低比1.5倍带宽)直接取自卡片原文数字,`minSymbolsForAggregation: 100` 则是本会话新增的、卡片未规定的保护性下限(样本太少时整体标 unknown 而不是给一个几十只标的算出来的百分比)。`entryStructure` 的四个阈值(97%/4%/0.9倍量/20日均量窗口)卡片同样未给具体数字,是本会话拍板并进 config 的,已在 `config/card09.json` 里集中可调。
+
+Future implications: 未来任何给 `ReportInput`/`PayloadInput` 加必填字段的改动,都要记得 `scripts/` 不受 tsconfig 保护——加完必须实跑一次 `npx tsx scripts/preview-report.ts <某个存档run>` 才算验证过。另外,存档 run 的 schema 演进已经出现第二类情况(不只是"字段缺失",还有"旧值是 undefined 而新代码假设 null"),渲染层对历史存档数据的判断应一律检查"解析结果是否可用",而不是只判 `!== null`。
