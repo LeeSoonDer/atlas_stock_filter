@@ -21,3 +21,13 @@ output/latest.html
 # artifacts above, it's the one output/ file that belongs in version
 # control (git's append-friendly, auditable history matches the
 # constitution's "全量归档,永不删除" requirement well).
+
+# design-demos/screenshots/ — regenerable, so kept out of version control
+# for the same reason as the output/ artifacts above. The demo HTML files
+# themselves ARE committed, and _shared-spec.md carries both the real
+# report data they render and the exact Playwright command that produced
+# each capture, so any screenshot here can be rebuilt from what is
+# tracked. (report-v2-preview*.png come from scripts/preview-report.ts
+# against a saved run rather than from a demo file — those two are only
+# reproducible while that run's data is still in the local output/runs/.)
+design-demos/screenshots/

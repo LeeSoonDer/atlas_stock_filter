@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ATLAS · Weekly Intel Briefing — Triage First</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+[data-project="atlas"] {
+  --bg:            #0B0E14;
+  --surface:       #141922;
+  --elevated:      #1C2230;
+  --overlay:       #232B3B;
+  --border:        #262E3D;
+  --border-strong: #34405480;
+
+  --text:          #E8EDF5;
+  --text-2:        #9AA6B8;
+  --text-muted:    #5E6B80;
+
+  --accent:        #22C9D6;
+  --accent-weak:   #22C9D61F;
+  --accent-strong: #55E0EA;
+
+  --pos:           #16C784;  --pos-weak:  #16C7841F;
+  --neg:           #EA3943;  --neg-weak:  #EA39431F;
+  --warn:          #F0A020;  --warn-weak: #F0A0201F;
+  --info:          #3B82F6;
+
+  --bucket-momentum:   #2F80FF;
+  --bucket-vol:        #A855F7;
+  --bucket-instl:      #16C784;
+  --bucket-oversold:   #F0A020;
+
+  --tier-research: var(--accent);
+  --tier-watch:    var(--text-2);
+
+  --font-display: 'Manrope', system-ui, sans-serif;
+  --font-body:    'Manrope', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+
+  --r-xs: 4px; --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px;
+
+  --shadow-overlay: 0 8px 32px -8px #00000099;
+  --ease: cubic-bezier(.2,.6,.2,1);
+  --dur:  160ms;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+  font-feature-settings: 'tnum' 1;
+}
+.mono { font-family: var(--font-mono); font-feature-settings: 'tnum' 1; }
+
+/* ===== base ===== */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+a { color: inherit; text-decoration: none; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 var(--s-6); }
+section[id] { scroll-margin-top: 112px; }
+
+.pos { color: var(--pos); }
+.neg { color: var(--neg); }
+.warn { color: var(--warn); }
+.flat { color: var(--text-2); }
+.muted { color: var(--text-muted); }
+
+.pending {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-style: italic;
+  display: inline-block;
+  max-width: 46ch;
+}
+.pending::before { content: "· "; font-style: normal; }
+
+.empty-state { font-size: 12.5px; color: var(--text-2); }
+
+/* ===== sticky header ===== */
+header.head-sticky {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.masthead {
+  max-width: 1180px; margin: 0 auto; padding: var(--s-3) var(--s-6);
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4);
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: baseline; gap: var(--s-3); }
+.brand-mark {
+  font-family: var(--font-display); font-weight: 800; font-size: 15px;
+  letter-spacing: 0.02em; color: var(--text);
+}
+.brand-sub {
+  font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 600;
+}
+.masthead-meta {
+  font-size: 12px; color: var(--text-2); white-space: nowrap;
+}
+
+.weather {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.weather-row {
+  max-width: 1180px; margin: 0 auto; padding: var(--s-2) var(--s-6);
+  display: flex; align-items: center; gap: var(--s-4);
+  flex-wrap: wrap; font-size: 12.5px;
+}
+.w-item { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.w-label { color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.w-value { color: var(--text); font-weight: 600; }
+.w-div { width: 1px; height: 12px; background: var(--border-strong); flex: 0 0 auto; }
+.w-pending { color: var(--text-muted); font-style: italic; font-size: 11px; }
+.weather-links { margin-left: auto; display: flex; gap: var(--s-4); flex-wrap: wrap; }
+.weather-links a {
+  font-size: 12px; color: var(--accent); border-bottom: 1px solid transparent;
+  transition: border-color var(--dur) var(--ease);
+}
+.weather-links a:hover { border-color: var(--accent); }
+
+/* ===== section eyebrows ===== */
+.tier-head { padding: var(--s-5) var(--s-5) var(--s-2); }
+.tier-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+}
+.tier-label.research { color: var(--tier-research); }
+.tier-label.watch { color: var(--tier-watch); }
+.tier-sub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+
+.evidence-nav {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin: var(--s-7) 0 var(--s-4);
+  border-top: 1px solid var(--border);
+  padding-top: var(--s-4);
+}
+.evidence-eyebrow {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+.evidence-nav a { font-size: 12px; color: var(--accent); }
+
+.section-eyebrow {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted); margin-bottom: var(--s-2);
+}
+.section-title-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.section-note { font-size: 12px; color: var(--text-muted); }
+
+/* ===== bucket dots ===== */
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.dot.momentum { background: var(--bucket-momentum); }
+.dot.vol { background: var(--bucket-vol); }
+.dot.instl { background: var(--bucket-instl); }
+.dot.oversold { background: var(--bucket-oversold); }
+.dot.off { background: transparent; border: 1px solid var(--text-muted); }
+
+/* ===== bucket legend ===== */
+.bucket-legend {
+  display: flex; gap: var(--s-5); flex-wrap: wrap;
+  padding: var(--s-2) var(--s-5) var(--s-4);
+  font-size: 12px;
+}
+.bl-item { display: flex; align-items: center; gap: 6px; }
+.bl-item .bl-name { color: var(--text-2); }
+.bl-item .bl-count { font-family: var(--font-mono); color: var(--text); font-weight: 600; }
+.bl-item.off .bl-name, .bl-item.off .bl-count { color: var(--text-muted); }
+
+/* ===== tier1 panel ===== */
+.tier1, .tier2 {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin-top: var(--s-6);
+  overflow: hidden;
+}
+.tier1 { margin-top: var(--s-5); }
+
+.cand-list > article + article { border-top: 1px solid var(--border); }
+.cand { padding: var(--s-5); }
+
+.cand-top {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-4);
+  flex-wrap: wrap;
+}
+.cand-id { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; }
+.cand-rank {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+  align-self: center;
+}
+.ticker {
+  font-size: 36px; font-weight: 800; letter-spacing: -0.01em; color: var(--text);
+  line-height: 1;
+}
+.company { font-size: 13px; color: var(--text-2); }
+
+.cand-rating { text-align: right; white-space: nowrap; }
+.rating-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; display: block; }
+.rating-value { font-size: 12.5px; color: var(--text-2); }
+.rating-na { font-family: var(--font-mono); color: var(--text-muted); font-size: 11px; }
+
+.cand-meta {
+  margin-top: var(--s-3);
+  font-size: 12.5px; color: var(--text-2);
+  display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;
+}
+.cand-meta .bucket-tag { display: flex; align-items: center; gap: 6px; color: var(--text); font-weight: 600; }
+.cand-meta .sep { color: var(--border-strong); }
+.cand-meta .flags { color: var(--text-muted); }
+.cand-meta .flags .up { color: var(--accent); }
+.cand-meta .event .mono { color: var(--text-2); }
+
+.cand-body {
+  margin-top: var(--s-4);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-5);
+}
+.cand-technicals {
+  display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 0 var(--s-4);
+  flex: 1 1 auto;
+}
+.tech-item { display: flex; flex-direction: column; gap: 3px; }
+.tech-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.tech-value { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text); }
+
+.cand-spark { flex: 0 0 auto; text-align: center; }
+.cand-spark svg { display: block; }
+.spark-caption { font-size: 9.5px; color: var(--text-muted); margin-top: 2px; }
+
+.cand-desc { margin-top: var(--s-3); }
+
+/* ===== tier2 watchlist table ===== */
+.watch-table { }
+.wt-row {
+  display: grid; grid-template-columns: 88px 20px 1fr 200px;
+  align-items: center; gap: var(--s-3);
+  padding: var(--s-2) var(--s-5);
+}
+.wt-head { border-top: 1px solid var(--border); }
+.wt-head .wt-col {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);
+}
+.wt-row + .wt-row { border-top: 1px solid var(--border); }
+.wt-ticker { font-family: var(--font-mono); font-weight: 700; font-size: 14px; color: var(--tier-watch); }
+.wt-name { font-size: 12.5px; color: var(--text-2); }
+.wt-trigger { font-size: 12px; color: var(--text-muted); text-align: right; }
+
+/* ===== evidence generic panels ===== */
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); overflow: hidden;
+}
+
+/* sector flow table */
+.sf-table { }
+.sf-row {
+  display: grid; grid-template-columns: 32px 1fr 84px 150px 78px;
+  align-items: center; gap: var(--s-3);
+  padding: var(--s-2) var(--s-5);
+  font-size: 13px;
+}
+.sf-head { }
+.sf-head .sf-col { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.sf-row + .sf-row { border-top: 1px solid var(--border); }
+.sf-row.anomaly { background: var(--accent-weak); }
+.sf-rank { font-family: var(--font-mono); color: var(--text-muted); }
+.sf-sector { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.sf-star { color: var(--accent); font-size: 12px; }
+.sf-anom-note { font-size: 11px; color: var(--accent); }
+.sf-chg { font-family: var(--font-mono); text-align: right; font-weight: 600; }
+.sf-sq { display: flex; align-items: center; gap: var(--s-2); }
+.sf-sq-val { font-family: var(--font-mono); width: 42px; flex: 0 0 auto; text-align: right; }
+.sf-sq-bar { flex: 1 1 auto; height: 4px; background: var(--overlay); border-radius: 2px; overflow: hidden; }
+.sf-sq-bar i { display: block; height: 100%; background: var(--text-muted); border-radius: 2px; }
+.sf-row.anomaly .sf-sq-bar i { background: var(--accent); }
+.sf-flow { text-align: right; font-weight: 600; }
+
+/* hot sectors */
+.hs-row { padding: var(--s-4) var(--s-5); }
+.hs-row + .hs-row { border-top: 1px solid var(--border); }
+.hs-name { font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: baseline; gap: var(--s-3); }
+.hs-rank { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+.hs-stats { margin-top: 4px; font-size: 12.5px; color: var(--text-2); font-family: var(--font-mono); }
+.hs-judgement { margin-top: 6px; }
+.hs-members { margin-top: 6px; font-size: 12.5px; color: var(--text-2); }
+.hs-members .mono { color: var(--text); }
+.hs-members .accent-mark { color: var(--accent); font-weight: 700; }
+.hs-none { margin-top: 6px; font-size: 12px; color: var(--text-muted); }
+
+/* theme radar */
+.theme-card { padding: var(--s-5); }
+.theme-name { font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; }
+.theme-tag { font-size: 11.5px; color: var(--text-muted); font-style: italic; font-weight: 400; }
+.theme-footprint { margin-top: var(--s-3); font-size: 13px; color: var(--text-2); }
+.footprint-bar { margin-top: 6px; height: 4px; background: var(--overlay); border-radius: 2px; overflow: hidden; max-width: 320px; }
+.footprint-bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.theme-verdict { margin-top: var(--s-3); display: block; }
+
+/* exclusions / summary / ledger */
+.simple-panel { padding: var(--s-4) var(--s-5); }
+.summary-body { padding: var(--s-4) var(--s-5); }
+.disclaimer {
+  margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-2); line-height: 1.6;
+}
+.ledger-lines { padding: var(--s-4) var(--s-5); display: flex; flex-direction: column; gap: var(--s-1); }
+.ledger-lines .empty-state { display: flex; gap: 8px; }
+.ledger-lines .empty-state .l-label { color: var(--text-muted); min-width: 110px; }
+
+/* section blocks spacing */
+.block { margin-top: var(--s-6); }
+.block:first-of-type { margin-top: 0; }
+
+footer {
+  max-width: 1180px; margin: var(--s-7) auto 0; padding: var(--s-5) var(--s-6) var(--s-7);
+  border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--text-muted);
+}
+
+/* ===== responsive ===== */
+@media (max-width: 880px) {
+  .wrap, .masthead, .weather-row, footer { padding-left: var(--s-4); padding-right: var(--s-4); }
+  .masthead { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .cand-body { flex-direction: column; align-items: stretch; }
+  .cand-technicals { grid-template-columns: repeat(3, minmax(0,1fr)); row-gap: var(--s-3); }
+  .cand-spark { align-self: flex-start; }
+  .wt-row { grid-template-columns: 70px 16px 1fr; }
+  .wt-trigger { display: none; }
+  .sf-row { grid-template-columns: 24px 1fr 70px 90px; }
+  .sf-sq-val { display: none; }
+  .weather-links { margin-left: 0; }
+}
+</style>
+</head>
+<body data-project="atlas">
+
+<header class="head-sticky">
+  <div class="masthead">
+    <div class="brand">
+      <span class="brand-mark">ATLAS · RADAR</span>
+      <span class="brand-sub">Weekly Intel Briefing</span>
+    </div>
+    <div class="masthead-meta mono">2026-08-26 · 16:28 UTC · universe 3350 · profile both</div>
+  </div>
+  <div class="weather">
+    <div class="weather-row">
+      <div class="w-item"><span class="w-label">SPY</span><span class="w-value pos">上方200D</span><span class="muted">· 斜率向上</span></div>
+      <div class="w-div"></div>
+      <div class="w-item"><span class="w-label">VIX</span><span class="w-value warn">15.56</span><span class="muted">· 高于20D均值</span></div>
+      <div class="w-div"></div>
+      <div class="w-item"><span class="w-label">领涨</span><span class="w-value pos">Energy</span><span class="muted">#1</span></div>
+      <div class="w-div"></div>
+      <div class="w-item"><span class="w-label">领跌</span><span class="w-value neg">Utilities</span><span class="muted">#11</span></div>
+      <div class="w-div"></div>
+      <span class="w-pending">本区总结 · 待研究层填充</span>
+      <div class="weather-links">
+        <a href="#sector-flow">完整板块资金流 →</a>
+        <a href="#tier1">回到候选 ↑</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ===== TIER 1 — CANDIDATES ===== -->
+  <section class="tier1" id="tier1">
+    <div class="tier-head">
+      <div class="tier-label research">第一层 · 值得研究</div>
+      <div class="tier-sub">本轮 3 个候选 · round-robin 跨桶轮换选出</div>
+    </div>
+    <div class="bucket-legend">
+      <span class="bl-item"><i class="dot vol"></i><span class="bl-name">波动挤压蓄势</span><span class="bl-count">11</span><span class="muted" style="font-size:11px;">(3候选+8观察哨)</span></span>
+      <span class="bl-item"><i class="dot instl"></i><span class="bl-name">机构吸筹代理</span><span class="bl-count">1</span><span class="muted" style="font-size:11px;">(双桶命中·SLP)</span></span>
+      <span class="bl-item off"><i class="dot off"></i><span class="bl-name">动量突破</span><span class="bl-count">0</span></span>
+      <span class="bl-item off"><i class="dot off"></i><span class="bl-name">超卖反转</span><span class="bl-count">0</span></span>
+    </div>
+
+    <div class="cand-list">
+
+      <!-- SBFG -->
+      <article class="cand">
+        <div class="cand-top">
+          <div class="cand-id">
+            <span class="cand-rank mono">01</span>
+            <span class="ticker mono">SBFG</span>
+            <span class="company">SB Financial Group, Inc. — Common Stock</span>
+          </div>
+          <div class="cand-rating">
+            <span class="rating-label">评级</span>
+            <span class="rating-value"><span class="rating-na">N/A</span> · 研究层未打分</span>
+          </div>
+        </div>
+        <div class="cand-meta">
+          <span class="bucket-tag"><i class="dot vol"></i>波动挤压蓄势</span>
+          <span class="sep">·</span>
+          <span>Financial Services</span>
+          <span class="sep">·</span>
+          <span class="event">⚡ earnings <span class="mono">2026-10-29</span></span>
+          <span class="sep">·</span>
+          <span class="flags"><span class="up">↑</span> 由观察哨升级 · 小盘投机档</span>
+        </div>
+        <div class="cand-body">
+          <div class="cand-technicals">
+            <div class="tech-item"><span class="tech-label">RSI14</span><span class="tech-value">51.72 中性</span></div>
+            <div class="tech-item"><span class="tech-label">52周位置</span><span class="tech-value">近52周高点</span></div>
+            <div class="tech-item"><span class="tech-label">均线排列</span><span class="tech-value">非多头</span></div>
+            <div class="tech-item"><span class="tech-label">BB带宽百分位</span><span class="tech-value">极度收缩</span></div>
+            <div class="tech-item"><span class="tech-label">量比</span><span class="tech-value">缩量</span></div>
+            <div class="tech-item"><span class="tech-label">机构持股</span><span class="tech-value">不可得</span></div>
+          </div>
+          <div class="cand-spark">
+            <svg width="150" height="48" viewBox="0 0 160 48">
+              <polyline fill="none" stroke="var(--tier-research)" stroke-width="1.6" points="0,22 8,24 16,27.2 24,28.8 32,32 40,35.2 48,36.8 56,38 64,39.2 72,38 80,36 88,36.8 96,35.2 104,32.8 112,34 120,32 128,30.8 136,32 144,30 152,28.8 160,28"/>
+              <circle cx="160" cy="28" r="2" fill="var(--tier-research)"/>
+            </svg>
+            <div class="spark-caption">90天走势 · 先跌后小幅回升</div>
+          </div>
+        </div>
+        <div class="cand-desc pending">描述 — 待研究层填充</div>
+      </article>
+
+      <!-- SLP -->
+      <article class="cand">
+        <div class="cand-top">
+          <div class="cand-id">
+            <span class="cand-rank mono">02</span>
+            <span class="ticker mono">SLP</span>
+            <span class="company">Simulations Plus, Inc. — Common Stock</span>
+          </div>
+          <div class="cand-rating">
+            <span class="rating-label">评级</span>
+            <span class="rating-value"><span class="rating-na">N/A</span> · 研究层未打分</span>
+          </div>
+        </div>
+        <div class="cand-meta">
+          <span class="bucket-tag"><i class="dot vol"></i><i class="dot instl"></i>波动挤压蓄势 + 机构吸筹代理</span>
+          <span class="sep">·</span>
+          <span>Healthcare</span>
+          <span class="sep">·</span>
+          <span class="event">⚡ earnings <span class="mono">2026-10-29</span></span>
+          <span class="sep">·</span>
+          <span class="flags"><span class="up">↑</span> 由观察哨升级</span>
+        </div>
+        <div class="cand-body">
+          <div class="cand-technicals">
+            <div class="tech-item"><span class="tech-label">RSI14</span><span class="tech-value">64.56 中性</span></div>
+            <div class="tech-item"><span class="tech-label">52周位置</span><span class="tech-value">中位区间</span></div>
+            <div class="tech-item"><span class="tech-label">均线排列</span><span class="tech-value">多头排列</span></div>
+            <div class="tech-item"><span class="tech-label">BB带宽百分位</span><span class="tech-value">极度收缩</span></div>
+            <div class="tech-item"><span class="tech-label">量比</span><span class="tech-value">缩量</span></div>
+            <div class="tech-item"><span class="tech-label">机构持股</span><span class="tech-value">不可得</span></div>
+          </div>
+          <div class="cand-spark">
+            <svg width="150" height="48" viewBox="0 0 160 48">
+              <polyline fill="none" stroke="var(--tier-research)" stroke-width="1.6" points="0,20 8,24 16,19.2 24,26 32,22 40,28 48,24 56,30 64,27.2 72,32 80,34 88,35.2 96,36 104,35.2 112,36.4 120,36 128,35.6 136,36 144,36.4 152,36 160,36"/>
+              <circle cx="160" cy="36" r="2" fill="var(--tier-research)"/>
+            </svg>
+            <div class="spark-caption">90天走势 · 震荡后低位企稳</div>
+          </div>
+        </div>
+        <div class="cand-desc pending">描述 — 待研究层填充</div>
+      </article>
+
+      <!-- WSBC -->
+      <article class="cand">
+        <div class="cand-top">
+          <div class="cand-id">
+            <span class="cand-rank mono">03</span>
+            <span class="ticker mono">WSBC</span>
+            <span class="company">WesBanco, Inc. — Common Stock</span>
+          </div>
+          <div class="cand-rating">
+            <span class="rating-label">评级</span>
+            <span class="rating-value"><span class="rating-na">N/A</span> · 研究层未打分</span>
+          </div>
+        </div>
+        <div class="cand-meta">
+          <span class="bucket-tag"><i class="dot vol"></i>波动挤压蓄势</span>
+          <span class="sep">·</span>
+          <span>Financial Services</span>
+          <span class="sep">·</span>
+          <span class="event">⚡ earnings <span class="mono">2026-10-21</span></span>
+          <span class="sep">·</span>
+          <span class="flags"><span class="up">↑</span> 由观察哨升级</span>
+        </div>
+        <div class="cand-body">
+          <div class="cand-technicals">
+            <div class="tech-item"><span class="tech-label">RSI14</span><span class="tech-value">46.63 中性</span></div>
+            <div class="tech-item"><span class="tech-label">52周位置</span><span class="tech-value">近52周高点</span></div>
+            <div class="tech-item"><span class="tech-label">均线排列</span><span class="tech-value">非多头</span></div>
+            <div class="tech-item"><span class="tech-label">BB带宽百分位</span><span class="tech-value">极度收缩</span></div>
+            <div class="tech-item"><span class="tech-label">量比</span><span class="tech-value">缩量</span></div>
+            <div class="tech-item"><span class="tech-label">机构持股</span><span class="tech-value">不可得</span></div>
+          </div>
+          <div class="cand-spark">
+            <svg width="150" height="48" viewBox="0 0 160 48">
+              <polyline fill="none" stroke="var(--tier-research)" stroke-width="1.6" points="0,16 8,14 16,16.8 24,15.2 32,12.8 40,16 48,14.4 56,16.4 64,18 72,20 80,22 88,24 96,27.2 104,28.8 112,32 120,34 128,35.2 136,36.8 144,38 152,39.2 160,40"/>
+              <circle cx="160" cy="40" r="2" fill="var(--tier-research)"/>
+            </svg>
+            <div class="spark-caption">90天走势 · 高位震荡回落</div>
+          </div>
+        </div>
+        <div class="cand-desc pending">描述 — 待研究层填充</div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ===== TIER 2 — WATCHLIST ===== -->
+  <section class="tier2" id="tier2">
+    <div class="tier-head">
+      <div class="tier-label watch">第二层 · 观察哨</div>
+      <div class="tier-sub">8 个 · SBFG / SLP / WSBC 本轮已从观察哨升格为候选,不再重复列出</div>
+    </div>
+    <div class="watch-table">
+      <div class="wt-row wt-head">
+        <span class="wt-col">TICKER</span>
+        <span class="wt-col"></span>
+        <span class="wt-col">公司</span>
+        <span class="wt-col" style="text-align:right;">触发条件</span>
+      </div>
+      <div class="wt-row"><span class="wt-ticker">APGE</span><i class="dot vol"></i><span class="wt-name">Apogee Therapeutics, Inc. — Common Stock</span><span class="wt-trigger">— 待观察触发</span></div>
+      <div class="wt-row"><span class="wt-ticker">ALOT</span><i class="dot vol"></i><span class="wt-name">AstroNova, Inc. — Common Stock</span><span class="wt-trigger">— 待观察触发</span></div>
+      <div class="wt-row"><span class="wt-ticker">NAVN</span><i class="dot vol"></i><span class="wt-name">Navan, Inc. — Class A Common Stock</span><span class="wt-trigger">— 待观察触发</span></div>
+      <div class="wt-row"><span class="wt-ticker">NIC</span><i class="dot vol"></i><span class="wt-name">Nicolet Bankshares Inc. — Common Stock</span><span class="wt-trigger">— 待观察触发</span></div>
+      <div class="wt-row"><span class="wt-ticker">WBI</span><i class="dot vol"></i><span class="wt-name">WaterBridge Infrastructure LLC — Class A Shares</span><span class="wt-trigger">— 待观察触发</span></div>
+      <div class="wt-row"><span class="wt-ticker">KFY</span><i class="dot vol"></i><span class="wt-name">Korn Ferry — Common Stock</span><span class="wt-trigger">— 待观察触发</span></div>
+      <div class="wt-row"><span class="wt-ticker">FNWD</span><i class="dot vol"></i><span class="wt-name">Finward Bancorp — Common Stock</span><span class="wt-trigger">— 待观察触发</span></div>
+      <div class="wt-row"><span class="wt-ticker">MBX</span><i class="dot vol"></i><span class="wt-name">MBX Biosciences, Inc. — Common Stock</span><span class="wt-trigger">— 待观察触发</span></div>
+    </div>
+  </section>
+
+  <!-- ===== EVIDENCE / BACKGROUND ===== -->
+  <div class="evidence-nav">
+    <span class="evidence-eyebrow">证据与背景 — 板块资金流 · 主题雷达 · 排除与总结</span>
+    <a href="#tier1">↑ 返回候选</a>
+  </div>
+
+  <!-- 全板块资金流谱 -->
+  <section class="block" id="sector-flow">
+    <div class="section-title-row">
+      <div>
+        <div class="section-eyebrow">全板块资金流谱</div>
+        <div class="section-note">11 个板块 · 按 rank 排列</div>
+      </div>
+    </div>
+    <div class="panel sf-table">
+      <div class="sf-row sf-head">
+        <span class="sf-col">#</span>
+        <span class="sf-col">板块</span>
+        <span class="sf-col" style="text-align:right;">周涨跌</span>
+        <span class="sf-col">挤压密度</span>
+        <span class="sf-col" style="text-align:right;">流向</span>
+      </div>
+      <div class="sf-row"><span class="sf-rank mono">1</span><span class="sf-sector">Basic Materials</span><span class="sf-chg pos">+2.4%</span><span class="sf-sq"><span class="sf-sq-val mono">3.5%</span><span class="sf-sq-bar"><i style="width:14.0%"></i></span></span><span class="sf-flow pos">流入</span></div>
+      <div class="sf-row anomaly"><span class="sf-rank mono">2</span><span class="sf-sector">Financial Services <span class="sf-star">★</span><span class="sf-anom-note">挤压密度全场最高</span></span><span class="sf-chg pos">+1.3%</span><span class="sf-sq"><span class="sf-sq-val mono">23.2%</span><span class="sf-sq-bar"><i style="width:92.8%"></i></span></span><span class="sf-flow pos">流入</span></div>
+      <div class="sf-row"><span class="sf-rank mono">3</span><span class="sf-sector">Communication Services</span><span class="sf-chg pos">+1.1%</span><span class="sf-sq"><span class="sf-sq-val mono">6.2%</span><span class="sf-sq-bar"><i style="width:24.8%"></i></span></span><span class="sf-flow pos">流入</span></div>
+      <div class="sf-row"><span class="sf-rank mono">4</span><span class="sf-sector">Real Estate</span><span class="sf-chg pos">+0.4%</span><span class="sf-sq"><span class="sf-sq-val mono">12.4%</span><span class="sf-sq-bar"><i style="width:49.6%"></i></span></span><span class="sf-flow pos">流入</span></div>
+      <div class="sf-row"><span class="sf-rank mono">5</span><span class="sf-sector">Consumer Defensive</span><span class="sf-chg neg">-0.2%</span><span class="sf-sq"><span class="sf-sq-val mono">8.3%</span><span class="sf-sq-bar"><i style="width:33.2%"></i></span></span><span class="sf-flow flat">横盘</span></div>
+      <div class="sf-row"><span class="sf-rank mono">6</span><span class="sf-sector">Technology</span><span class="sf-chg neg">-0.9%</span><span class="sf-sq"><span class="sf-sq-val mono">3.1%</span><span class="sf-sq-bar"><i style="width:12.4%"></i></span></span><span class="sf-flow flat">横盘</span></div>
+      <div class="sf-row"><span class="sf-rank mono">7</span><span class="sf-sector">Industrials</span><span class="sf-chg neg">-0.9%</span><span class="sf-sq"><span class="sf-sq-val mono">7.2%</span><span class="sf-sq-bar"><i style="width:28.8%"></i></span></span><span class="sf-flow flat">横盘</span></div>
+      <div class="sf-row"><span class="sf-rank mono">8</span><span class="sf-sector">Energy</span><span class="sf-chg neg">-1.0%</span><span class="sf-sq"><span class="sf-sq-val mono">3.1%</span><span class="sf-sq-bar"><i style="width:12.4%"></i></span></span><span class="sf-flow flat">横盘</span></div>
+      <div class="sf-row"><span class="sf-rank mono">9</span><span class="sf-sector">Utilities</span><span class="sf-chg neg">-1.2%</span><span class="sf-sq"><span class="sf-sq-val mono">6.3%</span><span class="sf-sq-bar"><i style="width:25.2%"></i></span></span><span class="sf-flow neg">流出</span></div>
+      <div class="sf-row"><span class="sf-rank mono">10</span><span class="sf-sector">Healthcare</span><span class="sf-chg neg">-1.2%</span><span class="sf-sq"><span class="sf-sq-val mono">6.6%</span><span class="sf-sq-bar"><i style="width:26.4%"></i></span></span><span class="sf-flow neg">流出</span></div>
+      <div class="sf-row"><span class="sf-rank mono">11</span><span class="sf-sector">Consumer Cyclical</span><span class="sf-chg neg">-1.5%</span><span class="sf-sq"><span class="sf-sq-val mono">11.9%</span><span class="sf-sq-bar"><i style="width:47.6%"></i></span></span><span class="sf-flow neg">流出</span></div>
+    </div>
+  </section>
+
+  <!-- 热门领域详述 -->
+  <section class="block" id="hot-sectors">
+    <div class="section-title-row">
+      <div>
+        <div class="section-eyebrow">热门领域详述</div>
+        <div class="section-note">你点名的 + 本周异动</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="hs-row">
+        <div class="hs-name">科技 / 软件 <span class="hs-rank">板块 rank 6/11</span></div>
+        <div class="hs-stats"><span class="neg">-0.9%</span> · 挤压密度 3.1% · <span class="flat">横盘</span></div>
+        <div class="hs-judgement pending">判断 — 待研究层填充</div>
+        <div class="hs-members">进观察哨: <span class="mono">ALOT, NAVN</span></div>
+      </div>
+      <div class="hs-row">
+        <div class="hs-name">AI 基建 <span class="hs-rank">细分主题篮子近似</span></div>
+        <div class="hs-stats"><span class="neg">-4.7%</span> · 挤压密度 0.0% · <span class="neg">流出</span></div>
+        <div class="hs-judgement pending">判断 — 待研究层填充</div>
+        <div class="hs-none">篮子覆盖 10/10 成分股在筛选宇宙内(手工近似,非官方分类) · 无候选无观察哨</div>
+      </div>
+      <div class="hs-row">
+        <div class="hs-name">航天 / 太空 <span class="hs-rank">细分主题篮子近似</span></div>
+        <div class="hs-stats"><span class="neg">-7.8%</span> · 挤压密度 0.0% · <span class="neg">流出</span></div>
+        <div class="hs-judgement pending">判断 — 待研究层填充</div>
+        <div class="hs-none">篮子覆盖 8/8 成分股在筛选宇宙内(手工近似,非官方分类) · 无候选无观察哨</div>
+      </div>
+      <div class="hs-row">
+        <div class="hs-name">Financial Services <span class="hs-rank">板块 rank 2/11</span></div>
+        <div class="hs-stats"><span class="pos">+1.3%</span> · 挤压密度 23.2% · <span class="pos">流入</span></div>
+        <div class="hs-judgement pending">判断 — 待研究层填充</div>
+        <div class="hs-members"><span class="accent-mark">◆</span> 进候选池: <span class="mono">SBFG, WSBC</span> · 进观察哨: <span class="mono">NIC, FNWD</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 萌芽主题雷达 -->
+  <section class="block" id="theme-radar">
+    <div class="section-title-row">
+      <div>
+        <div class="section-eyebrow">萌芽主题雷达</div>
+        <div class="section-note">激进档,苗头即报,尚未经研究层确认</div>
+      </div>
+    </div>
+    <div class="panel theme-card">
+      <div class="theme-name">Financial Services <span class="theme-tag">强度/阶段 — 待研究层判定</span></div>
+      <div class="theme-footprint mono">footprint: volatilityCompression 23.2% <span class="muted">(129只 / 555只样本)</span></div>
+      <div class="footprint-bar"><i style="width:92.8%"></i></div>
+      <div class="theme-verdict pending">白话判断 — 待研究层填充</div>
+    </div>
+  </section>
+
+  <!-- 排除项说明 -->
+  <section class="block" id="exclusions">
+    <div class="section-eyebrow">排除项说明</div>
+    <div class="panel simple-panel">
+      <span class="pending" style="max-width:none;">待研究层填充 — 排除项判定需要研究层的实时信息核实,应用层无法自行判定</span>
+    </div>
+  </section>
+
+  <!-- 本周总结与前瞻 -->
+  <section class="block" id="summary-outlook">
+    <div class="section-eyebrow">本周总结与前瞻</div>
+    <div class="panel summary-body">
+      <span class="pending" style="max-width:none;">待研究层填充</span>
+      <div class="disclaimer">
+        免责声明:每句均应锚定真实足迹或可查证的板块/价格数据,无无支撑预言。"这周没动"是诚实的合法输出;"值得注意"≠"建议买入",介入、仓位、执行属于你的领地。
+      </div>
+    </div>
+  </section>
+
+  <!-- 账本被动区 -->
+  <section class="block" id="ledger">
+    <div class="section-eyebrow">账本被动区</div>
+    <div class="panel ledger-lines">
+      <div class="empty-state"><span class="l-label">已到期待回填</span><span>无到期待回填条目</span></div>
+      <div class="empty-state"><span class="l-label">已触发无效化</span><span>无已触发无效化条目</span></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  ATLAS · Layer 1 情报简报 · Profile both · gatesPassedCount <span class="mono">3350</span>
+</footer>
+
+</body>
+</html>
