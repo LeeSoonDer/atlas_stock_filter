@@ -511,8 +511,24 @@
     typechecked but deliberately NOT executed (it writes to the shared
     Supabase table).
 
+- 2026-10-17 - re-handover after ~6 weeks idle. Repo now lives at
+  C:\Users\SD\Projects\atlas (moved from Desktop 2026-09-15; Stockpit's
+  .env.local ATLAS_REPO_PATH updated to match, and Stockpit now validates
+  the path before spawning into it).
+  - New scripts/push-run.ts (`npm run push:run -- --run-id <folder> | --all`):
+    replays pushRunToSupabase() from a saved screen_run.json, skipping runs
+    whose runMeta.timestamp is already in atlas_runs. Used to restore the
+    09-03 / 09-05 / 09-05_1006 runs after atlas_runs was found empty (cause
+    unknown); a second --all run skipped all three. See decisions.md.
+  - `npm run ledger:sync`: pulled 1 web backfill (MRVI) into
+    output/ledger.jsonl (append-only, 211 -> 212 lines), mirrored 22 rows.
+  - tsc clean, 339/339 tests.
+  - HANDBOOK.md mirror re-synced with Stockpit's updated copy.
+
 ## In Progress
-- Nothing active. Awaiting the project owner's next instruction.
+- Nothing active. Awaiting the project owner's next instruction (open
+  decisions: when to run a fresh full screen given the battery issue in
+  HANDBOOK §7.4; which Weekly Intel Briefing direction, if any, to build).
 
 ## Next Priorities
 1. User should, at their own convenience, open a generated

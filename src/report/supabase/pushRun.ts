@@ -17,15 +17,18 @@ import type { ScreenRunResult } from "../../screen/pipeline.js";
  * Deliberately does not use the @supabase/supabase-js SDK — this repo's
  * dependency footprint stays minimal (dotenv + yahoo-finance2 only), and a
  * single REST insert doesn't need a client library.
+ *
+ * Returns whether the row was written, so a caller that exists only to push
+ * (scripts/push-run.ts) can fail loudly; the screen CLI ignores it on purpose.
  */
-export async function pushRunToSupabase(result: ScreenRunResult): Promise<void> {
+export async function pushRunToSupabase(result: ScreenRunResult): Promise<boolean> {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
     console.error(
       "[screen] Supabase push skipped (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set in .env) - local artifacts are still complete, Cockpit web view just won't see this run",
     );
-    return;
+    return false;
   }
 
   const reportHtml = readFileSync(result.selection.htmlReportPath, "utf-8");
@@ -79,12 +82,14 @@ export async function pushRunToSupabase(result: ScreenRunResult): Promise<void> 
       console.error(
         `[screen] Supabase push failed: HTTP ${res.status} ${await res.text()} - local artifacts are still complete, not blocking`,
       );
-      return;
+      return false;
     }
     console.error(`[screen] Supabase push done: atlas_runs row written for ${runDate}`);
+    return true;
   } catch (e) {
     console.error(
       `[screen] Supabase push failed: ${(e as Error).message} - local artifacts are still complete, not blocking`,
     );
+    return false;
   }
 }

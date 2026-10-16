@@ -1,5 +1,7 @@
 # Atlas ↔ Cockpit — Relationship & Integration Status
 
+> **2026-10-17 note:** historical document from the Cockpit era. Current paths, run procedure (no pm2; `npm run dev` on demand) and status live in the repo-root `HANDBOOK.md`, which wins on any conflict. Atlas now lives at `C:\Users\SD\Projects\atlas`.
+
 > Snapshot date: 2026-08-31. Read `ATLAS.md` and `COCKPIT.md` in this same folder first — this file only covers how the two systems relate, not what each one is internally.
 
 ## 1. What actually connects them today

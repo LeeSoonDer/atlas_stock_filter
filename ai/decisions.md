@@ -571,3 +571,13 @@ Verification: 新增 39 个单测(adx 5、entryStructure 8、breadth+concentrati
 Tradeoff: 宽度三态的阈值(55%/35%/新低比2倍/新高新低比1.5倍带宽)直接取自卡片原文数字,`minSymbolsForAggregation: 100` 则是本会话新增的、卡片未规定的保护性下限(样本太少时整体标 unknown 而不是给一个几十只标的算出来的百分比)。`entryStructure` 的四个阈值(97%/4%/0.9倍量/20日均量窗口)卡片同样未给具体数字,是本会话拍板并进 config 的,已在 `config/card09.json` 里集中可调。
 
 Future implications: 未来任何给 `ReportInput`/`PayloadInput` 加必填字段的改动,都要记得 `scripts/` 不受 tsconfig 保护——加完必须实跑一次 `npx tsx scripts/preview-report.ts <某个存档run>` 才算验证过。另外,存档 run 的 schema 演进已经出现第二类情况(不只是"字段缺失",还有"旧值是 undefined 而新代码假设 null"),渲染层对历史存档数据的判断应一律检查"解析结果是否可用",而不是只判 `!== null`。
+
+## [2026-10-17] 新增 `npm run push:run`:已完成的本地扫描可补推到 Supabase
+
+Decision: 新增 `scripts/push-run.ts`(`npm run push:run -- --run-id <文件夹名> | --all`)。它读取 `output/runs/<文件夹>/screen_run.json`,原样交给现有的 `pushRunToSupabase()`;只要 `atlas_runs` 里已有 `runMeta.timestamp` 相同的行就跳过。时间戳按时刻比较,不按字符串比较,原因见 refresh-report.ts 的 findRunFolderByTimestamp。
+
+**为什么需要**:`pushRunToSupabase` 按设计是"尽力而为",失败只打日志、从不抛错,这条规则不该改,因为扫描本身不应该被网页推送拖垮。但这样一来,推送失败的扫描就没有任何回到网页的路径,只能重跑整次扫描:热缓存约 16 分钟,冷启动要几个小时,而且在电池问题修好之前,满载扫描本身就有风险。2026-10-17 实际遇到了:`atlas_runs` 被清空(原因无法还原),本地 9-03、9-05、9-05_1006 三次扫描都在。补推后网页立刻恢复;第二次运行三个都跳过,幂等性已实测。
+
+**为什么复用 pushRunToSupabase 而不是另写插入**:补推出来的行必须和当初那次推送写入的完全一致。两条写入路径迟早会分叉,而 Stockpit 那边读的是同一套列。
+
+Tradeoff: `scripts/` 不在 tsconfig 的覆盖范围内(见 7c 条教训),所以这个脚本是通过实际运行来验证的,不是靠类型检查。同次会话还跑了 `npm run ledger:sync`:拉回 1 条网页回填(MRVI,9-04),补齐 22 条镜像;本地账本只追加,没有改写。

@@ -1,5 +1,7 @@
 # Atlas ↔ Cockpit Web Integration — Implementation Status
 
+> **2026-10-17 note:** historical document from the Cockpit era. Current paths, run procedure (no pm2; `npm run dev` on demand) and status live in the repo-root `HANDBOOK.md`, which wins on any conflict. Atlas now lives at `C:\Users\SD\Projects\atlas`.
+
 > Written 2026-09-01. Read `ATLAS_COCKPIT_RELATIONSHIP.md` in this same folder first for the architecture rationale — this file is the concrete build log + remaining checklist.
 
 ## Decisions this build is based on (operator's answers, 2026-09-01)
@@ -69,7 +71,7 @@ After this, Cockpit is always running at `http://localhost:3000` from boot onwar
 1. `npm install` in both repos (picks up the new dependencies).
 2. Apply `supabase/schema.sql`, set both repos' env vars (done as part of Phase 0 above).
 3. `npm run migrate:journal` once in the Cockpit repo — moves real journal history into Supabase.
-4. Set `IS_LOCAL_CONTROL_PLANE=true` and `ATLAS_REPO_PATH=C:\Users\SD\Desktop\atlas` in Cockpit's **local** `.env.local` only (never on Vercel).
+4. Set `IS_LOCAL_CONTROL_PLANE=true` and `ATLAS_REPO_PATH=C:\Users\SD\Projects\atlas` in Cockpit's **local** `.env.local` only (never on Vercel).
 5. Run pm2 setup (Phase 0.5).
 6. Update Claude Desktop's `claude_desktop_config.json` — no new entry needed, the existing `cockpit` MCP server entry now also carries the 4 `atlas_*` tools once `mcp-server` is rebuilt (`cd mcp-server && npm install && npm run build`) — just restart Claude Desktop.
 7. End-to-end test: click "Run screen now" on `/atlas` → confirm a row appears → open it → confirm the report renders → in Claude Desktop's Atlas Radar project, ask it to read the latest run and save a brief → confirm it appears on the run's detail page.

@@ -1,6 +1,6 @@
 # Stockpit — 完整系统手册
 
-> 快照日期:2026-09-04。这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
+> 快照日期:2026-09-04 初版;**2026-10-17 更新**(Lens/Dossier 并入、Outcomes 并入 Screener、Analyze 页删除、pm2 常驻移除、Atlas/Cockpit 搬到 `C:\Users\SD\Projects\`、补推工具 `push:run`)。这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
 >
 > 这是**时间点快照**,不是自动更新的文档。任何具体细节在使用前都应对照实际代码复核,尤其是本文日期之后的改动。
 
@@ -19,6 +19,8 @@ Atlas(广度)          Stockpit 网页(枢纽)         研究层(深度)
 全美股 5000+ 标的  →  展示 / 交接 / 记录 / 追踪  →  Claude 对话里的深度分析
 "该看哪些"                                          "这一只到底怎样"
 ```
+
+漏斗旁边还有一条**独立的侧线 Lens(网页上的 Dossier 栏目)**:回答"这家公司是什么、值多少",以年为单位,**刻意不碰股价**,和漏斗两个方向都不互链(见 §4.5)。
 
 **核心目标不是收益率,是过程质量。** 系统承诺的是:纪律化的筛选、有证据的反驳、全量归档的前向验证。它管到"这只值得注意"为止,之后的介入、仓位、执行,全部属于使用者自己的领地。
 
@@ -80,9 +82,11 @@ Atlas 和 Stockpit 的代码里**零 LLM 调用**。它们只做三件事:拉取
 
 | 仓库 | GitHub | 角色 | 本地路径 |
 |---|---|---|---|
-| **Atlas** | `LeeSoonDer/atlas_stock_filter` | 筛选引擎(CLI,无网页) | `Desktop\atlas` |
-| **Stockpit** | `LeeSoonDer/stockpit`(private) | 网页产品(枢纽) | `Desktop\stockpit` |
-| **Cockpit** | `LeeSoonDer/stock-research-cockpit` | **冻结存档**,原版单机工具 | `Desktop\stock-research-cockpit` |
+| **Atlas** | `LeeSoonDer/atlas_stock_filter` | 筛选引擎(CLI,无网页) | `C:\Users\SD\Projects\atlas` |
+| **Stockpit** | `LeeSoonDer/stockpit`(private) | 网页产品(枢纽),含 Lens | `C:\Users\SD\Desktop\stockpit` |
+| **Cockpit** | `LeeSoonDer/stock-research-cockpit` | **冻结存档**,原版单机工具 | `C:\Users\SD\Projects\stock-research-cockpit` |
+
+(2026-09-15 Atlas 和 Cockpit 从桌面搬到 `Projects\`;Stockpit 仍在桌面。搬家后 `ATLAS_REPO_PATH` 必须跟着改,见 §6.1。)
 
 ### 为什么是三个而不是一个 monorepo
 
@@ -95,7 +99,7 @@ Atlas 和 Stockpit 的代码里**零 LLM 调用**。它们只做三件事:拉取
 
 **Cockpit 为什么冻结**:它是 Stockpit 的前身。Stockpit 从它的一个分支分出来后,两者已经真正分叉(删了 ETF、改了全部命名和路由、journal 只认 Supabase),不可能再合并。与其维护一个永不合并的长期分支(本质是伪装成分支的 fork),不如让 Stockpit 独立成仓,Cockpit 打上 tag `cockpit-v1.0` 作为可运行的原版存档。
 
-**实际好处**:两个独立文件夹意味着**可以同时运行**(Stockpit 在 3000 端口常驻,原版 Cockpit 需要时在 3001 端口手动起)。同一个文件夹里的两个分支做不到这一点。
+**实际好处**:两个独立文件夹意味着**可以同时运行**(Stockpit 在 3000 端口按需启动,原版 Cockpit 需要时在 3001 端口手动起)。同一个文件夹里的两个分支做不到这一点。
 
 ## 2.2 控制平面 vs 展示平面
 
@@ -106,7 +110,7 @@ Atlas 和 Stockpit 的代码里**零 LLM 调用**。它们只做三件事:拉取
 │  控制平面 = 你的电脑(本地)                            │
 │                                                      │
 │  • Atlas CLI(跑筛选,几分钟到几小时)                  │
-│  • Stockpit 本地实例(pm2 常驻,localhost:3000)        │
+│  • Stockpit 本地实例(按需 npm run dev,localhost:3000)│
 │    └─ "Run screen now" 按钮只在这里出现               │
 │  • Claude Desktop + 本地 MCP server                  │
 │    └─ 所有 AI 推理在这里发生                          │
@@ -116,7 +120,8 @@ Atlas 和 Stockpit 的代码里**零 LLM 调用**。它们只做三件事:拉取
 ┌─────────────────────────────────────────────────────┐
 │  Supabase(免费云端 Postgres)= 唯一真相来源            │
 │  journal_entries / atlas_runs / atlas_reviews /      │
-│  atlas_ledger / watchlist_items / app_settings       │
+│  atlas_ledger / watchlist_items / app_settings /     │
+│  lens_dossiers / lens_snapshots / lens_leads         │
 └────────────────────┬────────────────────────────────┘
                      │ 只读
                      ▼
@@ -214,9 +219,12 @@ npm run ledger:stats                                      # 四桶命中率/死�
 npm run ledger:backfill -- --ticker SYM [--outcome ...]   # 手动回填结果(网页也能做)
 npm run ledger:sync                                       # 账本与 Supabase 双向同步
 npm run report:refresh [-- --run-id <id>]                 # 把 Radar 评级织回报告并重推
+npm run push:run -- --run-id <文件夹名> | --all            # 把已有的本地扫描补推到 Supabase(幂等,已存在的跳过)
 npm run typecheck                                         # tsc --noEmit
-npm test                                                  # 300 个单测
+npm test                                                  # 339 个单测
 ```
+
+**`push:run` 什么时候用**:扫描本身的推送是"尽力而为"(失败只打日志、不报错),所以推送失败或 `atlas_runs` 被清空时,网页上就看不到那次扫描。用它从 `output/runs/<文件夹>/screen_run.json` 原样补推,不用重跑 16 分钟的扫描。2026-10-17 就是用它把 9 月的 3 次扫描补回了被清空的 `atlas_runs`。
 
 ---
 
@@ -226,14 +234,20 @@ npm test                                                  # 300 个单测
 
 | 路由 | 导航名 | 作用 |
 |---|---|---|
-| `/screener` | **Screener** | 扫描历史列表 + 运行按钮(仅本地)+ 每次运行的详情 |
-| `/screener/[id]` | — | 单次扫描详情:候选列表(带交接按钮和已深研标记)+ 内嵌完整报告 + Radar/红队结果 |
+导航共四个栏目:**Screener / Dossier / Journal / Watchlist**。
+
+| 路由 | 导航名 | 作用 |
+|---|---|---|
+| `/screener` | **Screener** | 两个 tab:**Runs**(扫描历史 + 运行按钮(仅本地)) 和 **Outcomes**(`?tab=outcomes`,账本:四桶命中率 + 待回填列表 + 一键标记结果) |
+| `/screener/[id]` | — | 单次扫描详情:候选列表(带「Deep research」交接按钮和已深研标记)+ 内嵌完整报告 + Radar/红队结果 |
+| `/dossier` | **Dossier** | Lens 公司档案列表 + 证据包构建器(复制到剪贴板) |
+| `/dossier/[ticker]` | — | 单家公司档案:两层楼视图、13 条因果链、每条 claim 的标签与来源、kill-criteria、完成度清单 |
 | `/journal` | **Journal** | 深度分析记录(聚合/表格/卡片三视图、筛选、图表、导出) |
 | `/watchlist` | **Watchlist** | 追踪标的 + 实时报价 + 四类预警 |
-| `/outcomes` | **Outcomes** | 账本:四桶命中率统计 + 待回填列表 + 一键标记结果 |
-| `/report/[id]` | — | 单次深度分析的完整可打印视图 |
+| `/report/[id]` | — | 单次深度分析的完整可打印视图(研究报告级 PDF) |
 | `/settings` | (右上角) | 仓位计算器参数 + 数据导入导出 |
-| `/` | (不在导航) | Analyze 页面。**保留但不展示**——MCP 靠它背后的 API,而且以后 BYOK 会落在这里 |
+| `/` | — | 重定向到 `/screener`。原 Analyze 页面已于 2026-09-06 删除;`/api/payload` 不受影响(MCP 用的是它),`components/analyze-form.tsx` 留作以后 BYOK 的落点 |
+| `/outcomes` | — | 重定向到 `/screener?tab=outcomes`,旧链接仍可用 |
 
 **命名说明**:原来叫 "Atlas" 和 "Journal"。Atlas 是代号,外人读不懂,改成行业标准词 **Screener**;Journal(交易日志)本身就是投资圈标准说法,保留。**ETF 页面已整体删除**。
 
@@ -256,12 +270,16 @@ npm test                                                  # 300 个单测
 | `/api/atlas/ledger` | GET/POST | 账本统计与待回填 / 记录一条结果 |
 | `/api/watchlist` | GET/POST/DELETE | 追踪列表 |
 | `/api/settings` | GET/PUT | 仓位参数 |
+| `/api/lens/companies` | GET | Dossier 列表(摘要列) |
+| `/api/lens/evidence` | POST | 从 SEC 等来源构建一家公司的证据包 |
+| `/api/lens/dossier/[ticker]` | GET/PUT | 读 / 写档案。**PUT 过闸门**(不合格整份退回并列出原因),且会丢弃请求里的 `evidence`、从 SEC 重新抓 |
+| `/api/lens/snapshot` | POST | 只刷新数字、生成变化报告,不动任何 claim |
 | `/api/health` | GET | 四个数据源 + 数据库连通性自检 |
 | `/api/heartbeat` | GET | Vercel 每日 cron 打的心跳,防 Supabase 暂停 |
 
 除 `/api/heartbeat` 外,全部经过 `checkAuth()` 密码校验。
 
-## 4.3 数据模型(Supabase,6 张表)
+## 4.3 数据模型(Supabase,9 张表)
 
 | 表 | 内容 | 谁写入 |
 |---|---|---|
@@ -271,6 +289,9 @@ npm test                                                  # 300 个单测
 | `atlas_ledger` | **账本镜像**(本地 `ledger.jsonl` 才是真相来源) | Atlas 同步 / 网页回填 |
 | `watchlist_items` | 追踪列表 | 网页 |
 | `app_settings` | 仓位参数(单行,id=1) | 网页 |
+| `lens_dossiers` | Lens 公司档案(每家一行,含证据基座与 claim) | MCP(`lens_save_dossier`,过闸门) |
+| `lens_snapshots` | 每次刷新证据时的快照 / 变化报告 | 网页 / MCP |
+| `lens_leads` | 档案里留下的待查线索 | MCP |
 
 **账本的双向同步机制**(重要):
 - 本地 `output/ledger.jsonl` 是**宪法定义的唯一真相来源**(只追加、进 git)
@@ -278,7 +299,7 @@ npm test                                                  # 300 个单测
 - 网页回填写进 Supabase → Atlas 下次运行(或手动 `npm run ledger:sync`)**拉回本地追加**
 - 幂等靠 `natural_key`,时间戳**统一归一化成 epoch 毫秒**再比对——因为 Postgres 回显 timestamptz 是 `+00:00` 格式,本地 JSON 是 `Z` 格式,同一时刻但字符串不同,直接比字符串会导致每次同步都重复追加
 
-## 4.4 MCP 桥接(11 个工具)
+## 4.4 MCP 桥接(15 个工具)
 
 `mcp-server/` 是一个**薄 HTTP 代理**:自己不含任何业务逻辑,不做任何 LLM 调用,只是把 Claude Desktop 的工具调用转发给已经在跑的 Stockpit API。
 
@@ -294,9 +315,25 @@ npm test                                                  # 300 个单测
 | `atlas_get_dissent_payload()` | 取最新扫描的隔离包 |
 | `atlas_save_radar_brief(symbol, content_text, grade?, probability?, confidence?, desc_text?)` | 保存辩护状 |
 | `atlas_save_dissent_verdict(symbol, content_text, ...)` | 保存红队攻击 |
-| `atlas_refresh_report(atlas_run_id?)` | 把评级织回报告并重推 Supabase |
+| `atlas_refresh_report(atlas_run_id?)` | 把评级织回报告并重推 Supabase(**仅本地控制面**) |
+| `lens_build_evidence(ticker)` | 拉取并整理一家公司的证据包(写档案从这里开始) |
+| `lens_get_dossier(ticker)` | 读现有档案(重跑前先读) |
+| `lens_save_dossier(ticker, dossier_json, thesis_status?)` | 保存档案,过闸门 |
+| `lens_refresh_evidence(ticker)` | 只刷新数字、拿变化报告,不重新推理 |
 
 **为什么 `atlas_save_radar_brief` 要单独传 grade/probability/confidence**:让 Claude 把它已经算出来的结构化值**当参数直接传**,而不是让后端去正则解析散文——后者又脆又容易错。只有传了这些字段,`atlas_refresh_report` 才能把它们织进报告的占位符。
+
+## 4.5 Lens —— 公司档案(Dossier)
+
+2026-09-04 并入 Stockpit 作为第四个栏目(代号 lens),实现的是 `reasoning/COMPANY_INTELLIGENCE_MANUAL.md`。推理层指令是 `reasoning/LENS_INSTRUCTIONS.md`,要作为一个独立 Claude Project 的 Instructions。
+
+- **它回答什么**:这家公司是什么、怎么赚钱、为什么能一直赚、什么在变、什么能毁掉它,以及每句话的证据是什么。**不回答"该不该买"**,不存价格。
+- **两层楼**:下层(第 1–7、10 条链)只能写有证据的东西,每条 claim 标 FACT / INFERENCE / NARRATIVE / UNKNOWN / NOT_DISCLOSED / CONTRADICTED;上层(第 8、9、11、12 条链 + 估值)可以大胆推演,但全部打 PROJECTION 章,并且必须写明站在哪些下层事实上。
+- **tier 和 tag 分开**:来源等级 tier(T0–T5)是机械的,代码查表决定;判断标签 tag 只能由推理层传回来。这样既不违反原则一,又让"标签闸门"成为数据库层面进不去的东西。
+- **证据基座永不接受模型给的版本**:保存时服务器会丢掉请求里的数字,从 SEC 重新抓一遍。
+- **隔离是机械强制的**:`npm run check:lens`(5 条规则),禁止 Lens 引用 Journal/Screener/价格源,也禁止外部引用 Lens。`/dossier` 与 `/journal`、`/screener` 之间两个方向都不放跳转。
+- **变化引擎**:刷新证据后自动把变动分成 STRUCTURAL / DRIFT / NARRATIVE_SHIFT / NEW_LEADS,并逐条复检 kill-criteria。它自己最多判到 `needs_review`,只有推理层能宣布 `broken`。
+- **现状**:三张 `lens_*` 表已建好;有 1 份真实档案(ASTS,2026-09-05)。
 
 ---
 
@@ -306,7 +343,8 @@ npm test                                                  # 300 个单测
 
 | 步骤 | 操作 | 自动化程度 |
 |---|---|---|
-| 1 | 打开 `localhost:3000/screener`,点「Run screen now」 | 一次点击 |
+| 0 | 插电源;在 `C:\Users\SD\Desktop\stockpit` 运行 `npm run dev`(用完 Ctrl+C 关掉,见 §6.2) | 一条命令 |
+| 1 | 打开 `localhost:3000`(自动跳到 `/screener`),点「Run screen now」 | 一次点击 |
 | 2 | 等待(热缓存约 16 分钟) | 全自动,跑完导航出现未读圆点 |
 | 3 | 点开报告看候选 | 一次点击 |
 | 4 | Claude Desktop 打开 Atlas Radar 项目,说一句"读取最新扫描并出辩护状" | **一句话**,Claude 自己调工具取数据、分析、存回 |
@@ -314,9 +352,20 @@ npm test                                                  # 300 个单测
 | 6 | 回网页看织入评级后的报告 | 自动 |
 | 7 | 决定深研哪只 → 点候选旁的「Deep research」按钮 | 一次点击(复制现成指令) |
 | 8 | 粘进 Claude Desktop 的分析项目 | 一次粘贴 |
-| 9 | (数周后)`/outcomes` 页面点「已重定价/已失效/已过期」回填账本 | 一次点击 |
+| 9 | (数周后)Screener 的 **Outcomes** tab 点「已重定价/已失效/已过期」回填账本 | 一次点击 |
 
-**整个流程不需要打开终端。**
+除了第 0 步启动服务器,**整个流程不需要再碰终端**。
+
+**节奏建议**:第 1–5 步每周一次(报告本身就是按周设计的,而且硬件问题修好之前少跑满载扫描,见 §7.4);Watchlist、Journal 和第 6–8 步可以每天做;第 9 步和 Lens 刷新放在每月或财报后。
+
+## 5.1b Lens 的流程
+
+| 步骤 | 操作 |
+|---|---|
+| 1 | Claude Desktop 打开 Lens 项目(Instructions = `reasoning/LENS_INSTRUCTIONS.md`),说"为 XXX 建 dossier" |
+| 2 | Claude 调 `lens_build_evidence` 取证据 → 推理 → `lens_save_dossier`。闸门不过会列出每一处问题,Claude 改完再存 |
+| 3 | 网页 `/dossier/XXX` 查看;完成度清单没满的档案会显示为未完成 |
+| 4 | 财报后:说"刷新 XXX 的证据"(`lens_refresh_evidence`)看变化报告;需要重新推理时先 `lens_get_dossier` 再按差异更新 |
 
 ## 5.2 无法自动化的那一步,以及为什么
 
@@ -357,7 +406,7 @@ npm test                                                  # 300 个单测
 | `SUPABASE_SERVICE_ROLE_KEY` | **必需** | 同上 |
 | `ACCESS_PASSWORD` | **必需** | 缺失时全站 401(fail closed,不是 fail open) |
 | `IS_LOCAL_CONTROL_PLANE` | 本地设 `true` | 决定「运行扫描」按钮是否出现/生效 |
-| `ATLAS_REPO_PATH` | 本地必需 | Atlas 仓库绝对路径,触发扫描时用 |
+| `ATLAS_REPO_PATH` | 本地必需 | Atlas 仓库绝对路径,触发扫描和报告回写时用。当前值应为 `C:\Users\SD\Projects\atlas`。**不要用 Git Bash 的 sed/echo 写它**:反斜杠会被吃掉。2026-10 发现它被写成了 `C:SERSSDDESKTOP<响铃符>TLAS`,扫描按钮因此失效。现在两个路由会先校验路径下有 `package.json` 和 `output/`,不对就直接报错并指出这个变量 |
 | `FMP_API_KEY` / `FINNHUB_API_KEY` / `FRED_API_KEY` | 选填 | 缺失时对应数据显示「不可得」,不影响其余流程 |
 
 ### Stockpit on Vercel
@@ -368,19 +417,20 @@ npm test                                                  # 300 个单测
 
 ⚠️ **环境变量必须在首次部署前填好**,否则构建阶段就会失败(不是运行时才报错)。
 
-## 6.2 本地常驻(pm2)
+## 6.2 本地按需运行(pm2 常驻已于 2026-09-16 移除)
 
-```bash
-npm install -g pm2 pm2-windows-startup
-pm2-startup install                    # 注册开机自启
-cd Desktop/stockpit
-pm2 start ecosystem.config.js
-pm2 save
+```powershell
+cd C:\Users\SD\Desktop\stockpit
+npm run dev        # 用完 Ctrl+C
 ```
 
-常用:`pm2 status` / `pm2 logs stockpit` / `pm2 restart stockpit`
+**为什么不再常驻**:
+1. 常驻的 `next dev` 会带着文件监视器持续编译,吃 CPU 和内存,而这台机器的 16GB 内存本来就紧。
+2. 更重要的是安全:`.env.local` 里是线上 Supabase 的 `service_role` key,这个 key 绕过所有行级权限;而 `next dev` 默认监听所有网卡。在不可信的 Wi-Fi 下常驻,等于对局域网开着一个带生产库管理员凭据的服务。
 
-**Windows 上的坑(已修)**:pm2 默认用 `node` 执行 `script`,而 `npm` 在 Windows 解析成 `npm.cmd`(批处理文件),node 解析不了会崩溃重启循环。`ecosystem.config.js` 因此直接指向 `node_modules/next/dist/bin/next`,绕开 npm 包装层。
+所以不要再用 pm2 或任何方式设成开机自启。`ecosystem.config.js` 留在仓库里只是历史,不再使用。
+
+**副作用**:「Run screen now」的运行状态只记在内存里。扫描进行中如果关掉 dev server,Atlas 子进程会继续跑完,只是网页不再显示"运行中"。所以扫描期间别关服务器。
 
 ## 6.3 Claude Desktop MCP 配置
 
@@ -407,11 +457,11 @@ C:\Users\SD\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claud
 
 注意:环境变量名仍是 `COCKPIT_*`(mcp-server 代码里读的就是这个名字),改名会失效。改完配置需**完全退出并重开** Claude Desktop。
 
-前提:Stockpit 必须正在运行(pm2 常驻就满足)——mcp-server 自己没有数据,只是转发。
+前提:Stockpit 必须正在运行(先 `npm run dev`)——mcp-server 自己没有数据,只是转发。服务器没开时,Claude Desktop 里的工具调用会报连接失败。服务器启动后不需要重启 Claude Desktop,每次工具调用都是现连。
 
 ## 6.4 Supabase 建表
 
-完整 schema 在 `stockpit/supabase/schema.sql`,在 Supabase 控制台 SQL Editor 里整份跑一次即可。文件是**幂等**的(`create table if not exists` + `add column if not exists`),可以安全重复执行。
+完整 schema 在 `stockpit/supabase/schema.sql`,在 Supabase 控制台 SQL Editor 里整份跑一次即可。文件是**幂等**的(`create table if not exists` + `add column if not exists`),可以安全重复执行。截至 2026-10-17,全部 9 张表(含三张 `lens_*`)都已建好。
 
 **免费版的坑**:项目 7 天无数据库活动会自动暂停。已用 `vercel.json` 里的每日 cron 打 `/api/heartbeat` 解决。如果哪天删了那个路由却没意识到,项目会静默暂停。
 
@@ -459,6 +509,8 @@ C:\Users\SD\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claud
 
 **操作建议**:修好之前**不要跑 Atlas 完整扫描**——16 分钟满载 CPU + 大量磁盘写入正是最容易触发断电的工况,而断在写盘中途就会损坏文件。
 
+**2026-10 复查:问题仍在。** 2026-10-14 的电池报告仍是 14.6%(9,120 / 62,320 mWh);Kernel-Power 41 在 9/11、9/16、9/27、10/5 各出现一次。实际损坏又多了一处:Stockpit 的 `.next/dev/types/routes.d.ts`(Next.js 自动生成的缓存)在 9/16 被写成两段内容叠在一起,导致 `tsc` 报错。2026-10-17 删除后由 `next dev` 重新生成,恢复正常。如果哪天 `tsc` 只在 `.next/` 下报一堆语法错误,先怀疑这个。
+
 ---
 
 # 第八部分:关键决策记录
@@ -483,17 +535,28 @@ C:\Users\SD\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claud
 
 ## 9.1 已完成
 
-Atlas 扫描 → Supabase → 网页展示 → Claude Desktop 出辩护状 → 评级织回报告 → 账本双向同步 → 网页一键回填,整条链路已端到端验证跑通。Journal 已全量迁移 Supabase(6 条真实记录),watchlist/settings 已云端化,pm2 常驻免终端,三个仓库已理清并全部推送 GitHub。
+Atlas 扫描 → Supabase → 网页展示 → Claude Desktop 出辩护状 → 评级织回报告 → 账本双向同步 → 网页一键回填,整条链路已端到端验证跑通。Journal 已全量迁移 Supabase(6 条真实记录),watchlist/settings 已云端化,三个仓库已理清并全部推送 GitHub。Lens 已并入 main(1 份真实档案:ASTS)。Vercel 已指向 `stockpit` 仓库,push 到 `main` 就会自动部署到生产环境。
 
-Atlas 侧:`npx tsc --noEmit` 干净,300/300 单测通过。
+**2026-10-17 复查与修复**(隔了约 6 周后重新接手):
+- `ATLAS_REPO_PATH` 已修正为新路径,两个本地路由加了路径校验(§6.1)
+- `atlas_runs` 当时是空的(原因不明),已用新增的 `npm run push:run -- --all` 把 9/3、9/5、9/5_1006 三次扫描补回(§3.5)
+- `npm run ledger:sync`:拉回 1 条网页回填(MRVI,9/4),推上 22 条缺失镜像
+- 修复了被断电写坏的 `.next/dev/types/routes.d.ts`(§7.4)
+- 验证结果:
+  - Atlas:`tsc` 干净,339/339 单测通过
+  - Stockpit:`tsc` 干净,`check:lens` PASS(182 个文件)
+  - 全部页面和 API 返回 200
+  - MCP 15 个工具可列出,只读调用全部成功
 
 ## 9.2 待办(按优先级)
 
 1. **修笔记本电池**(见 §7.4)—— 在此之前避免跑完整扫描
-2. **Vercel 重新指向 `stockpit` 仓库** —— 旧项目指向的分支已删除,当前是坏的
-3. **公网密码换成强密码**(见 §7.1)
+2. **确认公网密码够强**(见 §7.1)—— 目前 Vercel 生成的网址外面还套着一层 Vercel 登录(SSO),多了一道门;但 Vercel 后台 `ACCESS_PASSWORD` 的强度只能在 Vercel 控制台里看
+3. **Atlas 周报改版选方向** —— `atlas/docs` 里已有设计说明和两个示意(`bucket-centric.html` / `triage-first.html`),还没选、没实现
 4. **BYOK(填 API key 在网页跑分析)** —— 已完整设计但未实施。要点:访客的 key **绝不能存进数据库**,只存浏览器 session、每次请求当头部发、后端用完即丢;访客产出的数据要与本人真实记录完全隔离;先只接 Anthropic 一家,架构留可插拔;Atlas 扫描不应开放给访客触发(它不是个性化的,而且触发扫描根本不需要 LLM key,拿 key 当门槛挡不住滥用)
 5. **Radar 提示词扩写**(见 §7.2)—— 让市场级占位符也能被填上
+6. **金丝雀测试**(`CANARY.md`、Atlas 的 PROJECT_SETUP_GUIDE)—— 还没放真实冻结样本
+7. **TASK_CARD_09/10 的新信号需要 3–4 轮真实扫描作基线**,在那之前不要下"有效/无效"的结论
 
 ## 9.3 给接手者的提醒
 

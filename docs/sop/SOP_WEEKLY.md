@@ -1,11 +1,13 @@
 # SOP — 每次筛选周期操作流程(目标 ≤ 60 分钟)
 
+> **2026-10-17:** 现在的主流程是网页 + Claude Desktop MCP(Stockpit 的 HANDBOOK.md §5.1):在 `localhost:3000/screener` 点「Run screen now」,Radar/红队在 Claude Desktop 里一句话取数、存回,不再需要复制粘贴和手存 brief.md/dissent.md。下面的手动流程保留为 MCP 或网页不可用时的后备。第 5 步「人类裁决」和铁律两种流程都适用。
+
 > 按需触发,每周至少一次,多跑不限。数据以运行时点为准。
 
 ## 第 1 步:跑筛选(挂机 30 至 90 分钟,无需盯)
 
 ```powershell
-cd C:\Users\SD\Desktop\atlas
+cd C:\Users\SD\Projects\atlas
 npm run screen -- --profile both    # 或 standard / small_spec
 ```
 

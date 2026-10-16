@@ -15,7 +15,8 @@
     "ledger:backfill": "tsx src/ledger/cli-backfill.ts",
     "ledger:stats": "tsx src/ledger/cli-stats.ts",
     "ledger:sync": "tsx src/ledger/cli-sync.ts",
-    "report:refresh": "tsx scripts/refresh-report.ts"
+    "report:refresh": "tsx scripts/refresh-report.ts",
+    "push:run": "tsx scripts/push-run.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
