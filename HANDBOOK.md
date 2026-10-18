@@ -269,7 +269,7 @@ npm test                                                  # 347 个单测
 | `/api/atlas/runs/[id]` | GET | 单次扫描详情 + 关联的研究层结果 |
 | `/api/atlas/latest` | GET | 最新一次的 payload 文本(供 MCP 取用) |
 | `/api/atlas/reviews` | POST | 保存 Radar 辩护状 / 红队攻击结果 |
-| `/api/atlas/narrative` | POST | 保存 Radar 的市场层叙事(每次运行一份,重存即替换)。**先过闸门**(`lib/atlas-narrative.ts`),不合格整份退回并逐条列出原因 |
+| `/api/atlas/narrative` | POST | 保存 Radar 的市场层叙事(每次运行一份,重存即替换)。**先过机械检查**(`lib/atlas-narrative.ts`),不合格整份退回并逐条列出原因 |
 | `/api/atlas/run` | GET/POST | 触发扫描 / 查状态(**仅本地控制面**) |
 | `/api/atlas/refresh-report` | POST | 重渲染报告(**仅本地控制面**) |
 | `/api/atlas/ledger` | GET/POST | 账本统计与待回填 / 记录一条结果 |
@@ -320,7 +320,7 @@ npm test                                                  # 347 个单测
 | `atlas_get_dissent_payload()` | 取最新扫描的隔离包 |
 | `atlas_save_radar_brief(symbol, content_text, grade?, probability?, confidence?, desc_text?)` | 保存辩护状 |
 | `atlas_save_dissent_verdict(symbol, content_text, ...)` | 保存红队攻击 |
-| `atlas_save_market_narrative(narrative_json, atlas_run_id?)` | 保存市场层叙事:大盘复盘、资金流谱总结、热门领域判断、萌芽主题、排除项、长白话总结。过闸门:拒绝执行命令、仓位建议、止损/止盈/目标价、指数方向预测(修正案十八)、无锚点预言;每个主题必须有可证伪观察点,且至少两条足迹或三个成员(修正案十一) |
+| `atlas_save_market_narrative(narrative_json, atlas_run_id?)` | 保存市场层叙事:大盘复盘、资金流谱总结、热门领域判断、萌芽主题、排除项、长白话总结。只做机械检查:键名、主题枚举、每个主题要有可证伪观察点且至少两条足迹或三个成员(修正案十一)、铁律四原文「立即买入/卖出」。是不是交易建议或大盘预测,代码不判断,靠 Radar 指令和你自己读(2026-10-18 使用者裁决) |
 | `atlas_refresh_report(atlas_run_id?)` | 用该次运行的 `report_input.json` 加上研究层结果(评级 + 市场层叙事)重渲染报告并重推 Supabase(**仅本地控制面**) |
 | `lens_build_evidence(ticker)` | 拉取并整理一家公司的证据包(写档案从这里开始) |
 | `lens_get_dossier(ticker)` | 读现有档案(重跑前先读) |
@@ -569,7 +569,7 @@ Atlas 扫描 → Supabase → 网页展示 → Claude Desktop 出辩护状 → �
 - 验证结果:
   - Atlas:347/347 单测通过
   - Stockpit:`tsc` 干净,`check:lens` PASS(184 个文件)
-  - 写入闸门:事实性陈述零误杀(两轮独立验证共 49 句)。但它只能拦最直白的违规:第二轮新写的 35 种建议类说法漏掉 26 种,另有 16 条针对性构造句被误杀。同一子任务两轮未过,按熔断规则停手,方向交使用者定(见 §9.2)
+  - 写入闸门:最初做过一版识别建议/预测的词法规则,两轮独立验证都没过(第二轮新写的 35 种建议说法漏掉 26 种,另有 16 条误杀)。按熔断规则停手后,使用者 2026-10-18 选定只保留机械规则(键名、枚举、修正案十一的主题要求、「立即买入/卖出」原文);判断留给 Radar 指令和人
   - 真实 390px 视口下零横向溢出
 
 ## 9.2 待办(按优先级)
@@ -577,7 +577,6 @@ Atlas 扫描 → Supabase → 网页展示 → Claude Desktop 出辩护状 → �
 1. **修笔记本电池**(见 §7.4)—— 在此之前避免跑完整扫描
 2. **确认公网密码够强**(见 §7.1)—— 目前 Vercel 生成的网址外面还套着一层 Vercel 登录(SSO),多了一道门;但 Vercel 后台 `ACCESS_PASSWORD` 的强度只能在 Vercel 控制台里看
 3. **更新 claude.ai 的 Atlas Radar 项目** —— 换上新的 `ATLAS_RADAR_INSTRUCTIONS.md`,Knowledge 补传第四、五、六号修正案(§7.2)
-3b. **市场层叙事闸门定方向**(`lib/atlas-narrative.ts`):(A)维持现状,当作只拦明显违规的后备;(B)只留机械规则(键名、枚举、主题的足迹/成员/可证伪观察点数量、「立即买入/卖出」原文),撤掉其余词法规则;(C)换思路另做。在跑 radar_narrative 的 SQL 之前,闸门不会被用到
 4. **BYOK(填 API key 在网页跑分析)** —— 已完整设计但未实施。要点:访客的 key **绝不能存进数据库**,只存浏览器 session、每次请求当头部发、后端用完即丢;访客产出的数据要与本人真实记录完全隔离;先只接 Anthropic 一家,架构留可插拔;Atlas 扫描不应开放给访客触发(它不是个性化的,而且触发扫描根本不需要 LLM key,拿 key 当门槛挡不住滥用)
 5. **观察哨升级条件**(修正案十三要求"标注升级触发条件")—— payload 目前不逐只列出观察哨,Radar 无从写起;要做得先给 payload 加观察哨明细
 6. **金丝雀测试**(`CANARY.md`、Atlas 的 PROJECT_SETUP_GUIDE)—— 还没放真实冻结样本
