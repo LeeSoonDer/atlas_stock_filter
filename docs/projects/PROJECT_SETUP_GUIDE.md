@@ -3,13 +3,17 @@
 ## Project 1: Atlas Radar
 
 1. claude.ai 新建 Project,命名 `Atlas Radar`
-2. Instructions 栏:贴入 `ATLAS_RADAR_INSTRUCTIONS.md` 全文
-3. Knowledge 上传四份宪法文件:
+2. Instructions 栏:贴入 `ATLAS_RADAR_INSTRUCTIONS.md` 全文(2026-10-17 起含市场层章节;已有的 Project 要把旧指令整段替换)
+3. Knowledge 上传八份宪法文件(`constitution/` 目录):
    * ATLAS_v1_0.md
    * ATLAS_AMENDMENT_NO2_v1_1.md
    * ATLAS_MEMO_NO3_ADJUDICATIONS.md
    * ATLAS_MEMO_NO4_FINAL_ADJUDICATIONS.md
    * ATLAS_AMENDMENT_NO3_SECTOR_EVENT.md
+   * ATLAS_AMENDMENT_NO4_THEME_RADAR.md(足迹锚定、主题雷达、全板块扫描、长白话总结,新指令的市场层章节以它为准)
+   * ATLAS_AMENDMENT_NO5_SIGNAL_REFINEMENT.md(信用闸、期权诚实标注、宽度只描述不预测、集中度不给仓位)
+   * ATLAS_AMENDMENT_NO6_CONTAGION.md(筛选宽容度、板块传导叙事验证、市场叙事扫描)
+4. 在 Claude Desktop 里使用时,stockpit 的 MCP 工具会自动可用(先在 Stockpit 目录 `npm run dev`),说"读取最新扫描并出辩护状"即可
 
 ## Project 2: Atlas Red Team
 

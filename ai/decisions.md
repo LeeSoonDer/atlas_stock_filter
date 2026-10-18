@@ -581,3 +581,24 @@ Decision: 新增 `scripts/push-run.ts`(`npm run push:run -- --run-id <文件夹�
 **为什么复用 pushRunToSupabase 而不是另写插入**:补推出来的行必须和当初那次推送写入的完全一致。两条写入路径迟早会分叉,而 Stockpit 那边读的是同一套列。
 
 Tradeoff: `scripts/` 不在 tsconfig 的覆盖范围内(见 7c 条教训),所以这个脚本是通过实际运行来验证的,不是靠类型检查。同次会话还跑了 `npm run ledger:sync`:拉回 1 条网页回填(MRVI,9-04),补齐 22 条镜像;本地账本只追加,没有改写。
+
+## [2026-10-17] 周报改为 triage-first 版式;重渲染改用 report_input.json;Radar 指令补齐第四/五/六号修正案
+
+Decision 1 — 版式:使用者在 bucket-centric 与 triage-first 两个方向中选了 triage-first(`design-demos/triage-first.html`)。重写 `src/report/html/{renderReport,styles}.ts`:顶部固定一行"市场天气" → 第一层候选(每只只出现一次;右侧读数先是确定性的足迹强度,再是 Radar 评级)→ 第二层观察哨 → 分隔线下单列证据(大盘复盘、全板块资金流谱、热门领域、主题雷达、排除项、总结与前瞻、账本)。v2 的确定性内容一项不少:原有 339 条测试全部保留并通过,新增 8 条,共 347 条。三处值得记下:(a) 展开改用原生 `<details>`——Stockpit 用 `sandbox=""` 的 iframe 显示报告,脚本被禁,v2 的 JS 展开按钮在网页上一直是死的;排序改成纯渐进增强,脚本不跑时表格照常按 rank 排列。(b) 示意稿里"90天走势 · 先跌后小幅回升"这类形态描述没有照搬:那是应用层生成的判断性文字,违反"应用层不生成判断",只保留"90日走势"。(c) 修正案十一要求爆发期主题标"追高风险区"、衰竭期标"退潮"——这是对 Radar 自己枚举值的固定映射,不是应用层判断,所以由渲染器负责。
+
+**与修正案十三顺序的关系**:修正案十三写的是"大盘复盘 → 全板块扫描 → 主题雷达 → 第一层候选 → …"。8 月 31 日的 v2 已经按使用者亲自提供的设计草案改成候选在前,triage-first 延续这一裁决;修正案规定的顺序落在 Radar 辩护状的结构上(见 Decision 3)。
+
+Decision 2 — `report_input.json`:pipeline 现在把渲染 report.html 的完整 `ReportInput` 写进运行文件夹。`scripts/refresh-report.ts` 有它就直接用它 + 研究层结果重渲染,什么都不重算;没有它(2026-10-17 之前的运行)才退回旧的重建路径,并打出明确的 WARNING。**这是在修一个 9 月 3 日就存在的真 bug**:板块传导桶的评估(条件明细、龙头/滞后行、高波动卫星标记)、期权情报和扫描时的账本状态只在 pipeline 内存里存在过,重建路径根本拿不到——对一个板块传导候选做 refresh,足迹强度会从"强 4/4"掉成"不可得 0/0",传导行和卫星警示整个消失。只对候选+观察哨这个窄池落盘,与 8/31 "不让 screen_run.json 因全宇宙明细膨胀"的决定不冲突。顺带:refresh 首次覆盖前把原始扫描版存成 `report.scan.html`;`--run-id` 指定旧运行时不再覆盖 `output/latest.html`;重渲染时账本状态未知就显示「不可得」(`ledgerPendingBackfill/ledgerInvalidated: null`),不再显示成假的「0 条」。
+
+Decision 3 — Radar 指令:`docs/projects/ATLAS_RADAR_INSTRUCTIONS.md` 一直只写了逐候选辩护状,而第四号修正案(十至十三)、第六号修正案(二十三)早就要求研究层产出大盘复盘、全板块扫描、主题雷达、排除项与长白话总结——这是指令落后于宪法,不是新的产品决定。新指令按修正案十三的顺序组织,补进铁律八至十二(足迹锚定、宽度不预测、集中度不给仓位、期权诚实标注、筛选宽容度),原有逐候选模板一字不删,只在叙事/技术/基本面/机构引擎里加了板块传导叙事验证、突破/回踩区分等第五、六号修正案的要求;尾部第二个 JSON(`market_narrative`)经 Stockpit 的 `atlas_save_market_narrative` 存储。"至多五个候选"改为"至多三个"(修正案十三)。`PROJECT_SETUP_GUIDE.md` 的 Radar Knowledge 补上第四、五、六号修正案。payload 打印热门领域时带 `[板块]` 等后缀,refresh 会把键名截到方括号前再匹配。
+
+Verification: `tsc` 干净,347/347 单测(含 render(JSON(input)) 与 render(input) 逐字节相同的往返测试);refresh-report 在本地模拟 Supabase + 沙箱运行副本里跑了三个场景(缺列 + 一份评级;完整市场层含带后缀键与对不上的键;有 report_input.json 的新式运行),全部按预期,未触碰正式数据库;真实 390px 视口下零横向溢出。真实数据库上的端到端测试待使用者加列后再做。
+
+Future implications: 观察哨的"升级触发条件"(修正案十三)仍没有着落——payload 不逐只列观察哨,Radar 无从写起;要做先给 payload 加观察哨明细,另立任务。
+
+## [2026-10-18] refresh-report 两处健壮性修正(来自独立验证)
+
+1. "radar_narrative 列不存在"的降级只认 PostgREST 的真实答复(HTTP 400、响应体里有 42703/PGRST204/does not exist 且点名 radar_narrative)。原来只看报错文本里有没有 radar_narrative,而报错文本总带着请求路径,于是一次超时或 500 也会被当成"列不存在":市场层叙事被悄悄丢掉,报告照样重推,退出码还是 0。现在这种情况直接失败、不写任何东西(本地模拟服务复现并验证)。
+2. 读 atlas_reviews 时按 created_at 升序。辩护状是插入不是覆盖,重存后同一 symbol 有两行,原先哪一行生效取决于数据库返回顺序;现在最新的那份生效。
+
+同日渲染器小修:排除项的代码列表可换行(7 个以上代码在手机上会被截断);"四桶"改"五桶"(板块传导是第五桶,总命中次数本来就把它算在内);renderReport 的文档注释改为如实说明哪些固定措辞是宪法为确定性旗标规定的警示。

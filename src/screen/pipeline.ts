@@ -380,7 +380,7 @@ export interface ScreenRunResult {
     candidates: SelectedCandidate[];
     watchlist: WatchlistEntry[];
     promotedThisRun: string[];
-    /** output/runs/{YYYY-MM-DD[_HHMM]} - the per-run dated folder holding all 4 of this run's artifact files (see resolveRunFolder). */
+    /** output/runs/{YYYY-MM-DD[_HHMM]} - the per-run dated folder holding this run's artifact files: the two payloads, report.html, report_input.json (what report.html was rendered from) and screen_run.json (see resolveRunFolder). */
     runFolder: string;
     atlasPayloadPath: string;
     dissentPayloadPath: string;
@@ -1017,7 +1017,7 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     };
   });
 
-  const htmlReportText = renderReport({
+  const reportInput: ReportInput = {
     runMeta: { timestamp: runTimestamp, profileArg, gatesPassedCount: symbols.length, detectorSummary },
     marketRegime,
     creditRegime,
@@ -1032,7 +1032,8 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
     promotedThisRun,
     ledgerPendingBackfill: pendingBackfill,
     ledgerInvalidated: invalidatedEntries,
-  });
+  };
+  const htmlReportText = renderReport(reportInput);
 
   const runFolder = resolveRunFolder(runTimestamp);
   mkdirSync(runFolder, { recursive: true });
@@ -1042,6 +1043,13 @@ export async function runScreen(profileArg: ProfileArg): Promise<ScreenRunResult
   writeFileSync(atlasPayloadPath, atlasPayloadText, "utf-8");
   writeFileSync(dissentPayloadPath, dissentPayloadText, "utf-8");
   writeFileSync(htmlReportPath, htmlReportText, "utf-8");
+  // The exact input this report was rendered from, so scripts/refresh-report.ts
+  // can re-render it with Radar's layer added and nothing recomputed. Several
+  // parts of it exist only in memory during the run (the sector_contagion
+  // evaluation and its conditions, options intelligence, the ledger's state at
+  // scan time) and could not otherwise be recovered from screen_run.json.
+  // Narrow pool only (<=3 candidates + <=8 watchlist), so it stays small.
+  writeFileSync(`${runFolder}/report_input.json`, JSON.stringify(reportInput), "utf-8");
   // Always-current pointer to the most recent report, independent of date -
   // "看最新报告" never requires knowing which dated folder to look in.
   writeFileSync("output/latest.html", htmlReportText, "utf-8");

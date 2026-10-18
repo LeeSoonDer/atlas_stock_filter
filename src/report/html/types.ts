@@ -84,7 +84,7 @@ export interface ReportInput {
     profileArg: string;
     gatesPassedCount: number;
     /** claude_code_design_draft.md §2 layer 01: total per-bucket trigger
-     * counts this run, needed for the "四桶总命中次数" summary line and the
+     * counts this run, needed for the "五桶总命中次数" summary line and the
      * "零命中的桶" legend at the foot of layer 02 - both pure re-renders of
      * data the pipeline already computes (ScreenRunResult.runMeta.detectorSummary),
      * never app-synthesized. */
@@ -106,8 +106,11 @@ export interface ReportInput {
   candidates: HtmlReportCandidateInput[];
   watchlist: HtmlWatchlistInput[];
   promotedThisRun: string[];
-  ledgerPendingBackfill: ScreeningLedgerEntry[];
-  ledgerInvalidated: Array<{ screening: ScreeningLedgerEntry; invalidatedAt: string }>;
+  /** null = not known for this render (scripts/refresh-report.ts and
+   * preview-report.ts re-render from saved run data, which never recorded the
+   * ledger's state at scan time) - rendered as 不可得, never as 0. */
+  ledgerPendingBackfill: ScreeningLedgerEntry[] | null;
+  ledgerInvalidated: Array<{ screening: ScreeningLedgerEntry; invalidatedAt: string }> | null;
   /** TASK_CARD_07 Part C: absent on a pure-screen run (no Radar pass yet) - every prose slot this feeds must show a placeholder, never app-generated text, when undefined. */
   radarNarrative?: RadarNarrativeInput;
 }

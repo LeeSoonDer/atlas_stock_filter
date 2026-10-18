@@ -2,27 +2,34 @@
  * Re-renders an Atlas run's report.html with any saved Radar output woven
  * into the 待研究层填充 placeholders, then re-pushes it to Supabase.
  *
- * Reuses preview-report.ts's exact ReportInput-reconstruction approach
- * (read the run's screen_run.json + output/checkpoint.json, zero network
- * calls, zero re-run of the screen itself) and adds one thing on top:
- * fetches this run's `atlas_reviews` rows (kind='radar_brief') from
- * Supabase and threads them into `radarNarrative.candidateVerdicts`.
- *
- * Only candidateVerdicts gets populated this way — ATLAS_RADAR_INSTRUCTIONS.md's
- * actual scope is per-candidate briefs only, it does not produce market
- * recap / sector verdicts / emerging themes / weekly forecast content, so
- * those placeholders correctly stay "待研究层填充" even after a refresh.
- * That's not a bug here; closing that gap means expanding Radar's own
- * instructions, a separate decision outside this script's scope.
+ * Input: the run's own report_input.json - the exact ReportInput the screen
+ * rendered from - plus Radar's layer from Supabase: per-candidate
+ * `atlas_reviews` rows (kind='radar_brief') into
+ * `radarNarrative.candidateVerdicts`, and the run's market-level narrative
+ * (`atlas_runs.radar_narrative`: 大盘复盘, sector-flow summary, hot-sector
+ * verdicts, themes, exclusions, weekly summary) into the rest of
+ * radarNarrative. Nothing is recomputed and no market data is fetched, so a
+ * refresh takes seconds. Runs saved before report_input.json existed fall
+ * back to reconstructReportInput() - see its comment for what that loses.
+ * The as-scanned report is kept as report.scan.html before the first
+ * overwrite.
  *
  * Usage: npx tsx scripts/refresh-report.ts [--run-id <supabase-atlas_runs-id>]
  * Defaults to the most recent Supabase atlas_runs row. Requires
  * SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY in .env (same as pushRun.ts).
  */
 import "dotenv/config";
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, copyFileSync } from "node:fs";
 import { renderReport } from "../src/report/html/index.js";
-import type { HtmlReportCandidateInput, HtmlWatchlistInput, ReportInput, RadarCandidateVerdict } from "../src/report/html/types.js";
+import type {
+  HtmlReportCandidateInput,
+  HtmlWatchlistInput,
+  ReportInput,
+  RadarCandidateVerdict,
+  RadarExcludedNoteInput,
+  RadarNarrativeInput,
+  RadarThemeInput,
+} from "../src/report/html/types.js";
 import type { DetectorsConfig } from "../src/screen/indicators/types.js";
 import type { SelectConfig } from "../src/screen/select/types.js";
 import { allDetectors } from "../src/screen/detectors/index.js";
@@ -58,12 +65,31 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
+class SupabaseError extends Error {
+  constructor(readonly status: number, readonly body: string, path: string) {
+    super(`Supabase GET ${path} failed: HTTP ${status} ${body}`);
+  }
+}
+
 async function supabaseGet(path: string): Promise<any> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: { apikey: SUPABASE_KEY!, Authorization: `Bearer ${SUPABASE_KEY}` },
   });
-  if (!res.ok) throw new Error(`Supabase GET ${path} failed: HTTP ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new SupabaseError(res.status, await res.text(), path);
   return res.json();
+}
+
+/** True only for PostgREST's "that column doesn't exist" answer (HTTP 400,
+ * code 42703 / PGRST204, naming radar_narrative) - judged from the response
+ * body, not the error message, which always contains the request path and so
+ * would also match a timeout or a 500 on that same request. */
+function isMissingNarrativeColumn(e: unknown): boolean {
+  return (
+    e instanceof SupabaseError &&
+    e.status === 400 &&
+    /radar_narrative/.test(e.body) &&
+    /42703|PGRST204|does not exist|schema cache/i.test(e.body)
+  );
 }
 
 async function supabasePatch(path: string, body: unknown): Promise<void> {
@@ -106,19 +132,57 @@ function findRunFolderByTimestamp(runTimestamp: string): string | null {
   return null;
 }
 
+/** atlas_runs.radar_narrative as Stockpit's POST /api/atlas/narrative stored
+ * it (already validated there, lib/atlas-narrative.ts). Only the known keys
+ * are carried into the render - candidateVerdicts in particular can never
+ * come from here, only from atlas_reviews. The renderer escapes every
+ * string, so this does shape selection, not sanitising. */
+function pickMarketNarrative(raw: unknown): Omit<RadarNarrativeInput, "candidateVerdicts"> | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const n = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
+  const out: Omit<RadarNarrativeInput, "candidateVerdicts"> = {
+    marketRecapParagraph: str(n.marketRecapParagraph),
+    sectorFlowSummaryLine: str(n.sectorFlowSummaryLine),
+    weeklyForecast: str(n.weeklyForecast),
+    // Keyed by HotSectorEntry.name. The payload prints each heading with a
+    // bracketed kind after it ("科技/软件 [板块]", "AI 基建 [篮子近似] (...)"),
+    // so a key copied whole from the payload is cut back to the bare name.
+    hotSectorVerdicts:
+      typeof n.hotSectorVerdicts === "object" && n.hotSectorVerdicts !== null && !Array.isArray(n.hotSectorVerdicts)
+        ? Object.fromEntries(
+            Object.entries(n.hotSectorVerdicts as Record<string, string>).map(([name, text]) => [name.replace(/\s*\[.*$/, "").trim(), text]),
+          )
+        : undefined,
+    emergingThemes: Array.isArray(n.emergingThemes) ? (n.emergingThemes as RadarThemeInput[]) : undefined,
+    excludedNotes: Array.isArray(n.excludedNotes) ? (n.excludedNotes as RadarExcludedNoteInput[]) : undefined,
+  };
+  const present = Object.entries(out).filter(([, v]) => v !== undefined).map(([k]) => k);
+  console.error(`[refresh-report] market narrative: ${present.length > 0 ? present.join(", ") : "(none saved)"}`);
+  return present.length > 0 ? out : null;
+}
+
 async function main() {
   const runIdArgIdx = process.argv.indexOf("--run-id");
   const requestedRunId = runIdArgIdx >= 0 ? process.argv[runIdArgIdx + 1] : undefined;
 
-  const query = requestedRunId
-    ? `atlas_runs?id=eq.${requestedRunId}&select=id,run_timestamp`
-    : `atlas_runs?order=run_timestamp.desc&limit=1&select=id,run_timestamp`;
-  const runs = await supabaseGet(query);
+  const runFilter = requestedRunId ? `id=eq.${requestedRunId}` : `order=run_timestamp.desc&limit=1`;
+  // radar_narrative is a later column (Stockpit's supabase/schema.sql); a
+  // database that hasn't applied it yet still refreshes candidate verdicts.
+  let runs: any[];
+  try {
+    runs = await supabaseGet(`atlas_runs?${runFilter}&select=id,run_timestamp,radar_narrative`);
+  } catch (e) {
+    if (!isMissingNarrativeColumn(e)) throw e;
+    console.error("[refresh-report] atlas_runs.radar_narrative column not present yet - market-level narrative skipped (apply Stockpit's supabase/schema.sql)");
+    runs = await supabaseGet(`atlas_runs?${runFilter}&select=id,run_timestamp`);
+  }
   if (!runs.length) {
     console.error(requestedRunId ? `[refresh-report] no atlas_runs row for id ${requestedRunId}` : "[refresh-report] no atlas_runs rows exist yet");
     process.exit(1);
   }
   const { id: atlasRunId, run_timestamp: runTimestamp } = runs[0];
+  const marketNarrative = pickMarketNarrative(runs[0].radar_narrative);
   console.error(`[refresh-report] target run: ${atlasRunId} (${runTimestamp})`);
 
   const runDir = findRunFolderByTimestamp(runTimestamp);
@@ -128,8 +192,10 @@ async function main() {
   }
   console.error(`[refresh-report] local run folder: ${runDir}`);
 
+  // Briefs are inserted, never upserted, so a resaved brief leaves two rows
+  // for one symbol. Oldest first: the loop below lets the newest one win.
   const reviews = await supabaseGet(
-    `atlas_reviews?atlas_run_id=eq.${atlasRunId}&kind=eq.radar_brief&select=symbol,grade,probability,confidence,desc_text`,
+    `atlas_reviews?atlas_run_id=eq.${atlasRunId}&kind=eq.radar_brief&select=symbol,grade,probability,confidence,desc_text&order=created_at.asc`,
   );
   const candidateVerdicts: Record<string, RadarCandidateVerdict> = {};
   for (const r of reviews) {
@@ -142,6 +208,59 @@ async function main() {
   }
   console.error(`[refresh-report] ${reviews.length} radar_brief review(s) found for this run: ${Object.keys(candidateVerdicts).join(", ") || "(none)"}`);
 
+  const savedInputPath = `${runDir}/report_input.json`;
+  let baseInput: ReportInput;
+  if (existsSync(savedInputPath)) {
+    baseInput = JSON.parse(readFileSync(savedInputPath, "utf-8")) as ReportInput;
+    console.error(`[refresh-report] using ${savedInputPath} - the scan-time render input, nothing recomputed`);
+  } else {
+    console.error(
+      `[refresh-report] WARNING: ${runDir} has no report_input.json (it predates 2026-10-17) - reconstructing from screen_run.json; sector_contagion conditions and leader/lag rows, options intelligence and the scan-time ledger state cannot be recovered and will render as 不可得`,
+    );
+    baseInput = reconstructReportInput(runDir);
+  }
+
+  const hasVerdicts = Object.keys(candidateVerdicts).length > 0;
+  const reportInput: ReportInput = {
+    ...baseInput,
+    radarNarrative: hasVerdicts || marketNarrative ? { ...(marketNarrative ?? {}), ...(hasVerdicts ? { candidateVerdicts } : {}) } : undefined,
+  };
+
+  if (marketNarrative?.hotSectorVerdicts) {
+    const known = new Set(reportInput.hotSectorDetail.map((h) => h.name));
+    const unmatched = Object.keys(marketNarrative.hotSectorVerdicts).filter((name) => !known.has(name));
+    if (unmatched.length > 0) {
+      console.error(
+        `[refresh-report] WARNING: hotSectorVerdicts for ${unmatched.map((n) => `"${n}"`).join(", ")} match no hot sector in this run (have: ${[...known].join(", ")}) - those verdicts will not render; resave keyed by the payload's 热门领域详述 names (the part before any [..])`,
+      );
+    }
+  }
+
+  const html = renderReport(reportInput);
+  // Keep the as-scanned report once, before the first refresh overwrites it.
+  const scanCopy = `${runDir}/report.scan.html`;
+  if (!existsSync(scanCopy) && existsSync(`${runDir}/report.html`)) copyFileSync(`${runDir}/report.html`, scanCopy);
+  writeFileSync(`${runDir}/report.html`, html, "utf-8");
+  // latest.html points at the newest run; only the default target (the most
+  // recent atlas_runs row) may replace it, never an older run picked by id.
+  if (!requestedRunId) writeFileSync("output/latest.html", html, "utf-8");
+  console.error(`[refresh-report] wrote ${runDir}/report.html (${html.length} bytes)`);
+
+  await supabasePatch(`atlas_runs?id=eq.${atlasRunId}`, { report_html: html, report_refreshed_at: new Date().toISOString() });
+  console.error(`[refresh-report] Supabase atlas_runs row ${atlasRunId} updated`);
+}
+
+/**
+ * Fallback for runs saved before report_input.json existed (2026-10-17):
+ * rebuilds a ReportInput from screen_run.json + output/checkpoint.json, the
+ * way preview-report.ts does. Some of the original render can't be recovered
+ * that way, because the pipeline only ever held it in memory: the
+ * sector_contagion evaluation (its conditions, leader/lag row and high-beta
+ * flag), options intelligence, and the ledger's state at scan time. Those
+ * render as 不可得 here - honest, but poorer than the scan-time report, which
+ * is why main() keeps a copy of that original before overwriting it.
+ */
+function reconstructReportInput(runDir: string): ReportInput {
   const detectorsConfig = detectorsConfigJson as DetectorsConfig;
   const card04Config = card04ConfigJson as {
     shortInterest: { significantDeclinePercent: number; squeezeMinFloatPercent: number };
@@ -233,7 +352,7 @@ async function main() {
     return { symbol: w.symbol, securityName: s?.securityName ?? w.symbol, reason: w.reason, footprintDetail: detail, footprintStrength: strength };
   });
 
-  const reportInput: ReportInput = {
+  return {
     runMeta: {
       timestamp: run.runMeta.timestamp,
       profileArg: run.runMeta.profileArg,
@@ -257,18 +376,11 @@ async function main() {
     candidates: htmlCandidates,
     watchlist: watchlistForHtml,
     promotedThisRun: run.selection.promotedThisRun,
-    ledgerPendingBackfill: [],
-    ledgerInvalidated: [],
-    radarNarrative: Object.keys(candidateVerdicts).length > 0 ? { candidateVerdicts } : undefined,
+    // The ledger's state at scan time was never saved with the run, and this
+    // script reads saved data only - so on a re-render it is unknown, not 0.
+    ledgerPendingBackfill: null,
+    ledgerInvalidated: null,
   };
-
-  const html = renderReport(reportInput);
-  writeFileSync(`${runDir}/report.html`, html, "utf-8");
-  writeFileSync("output/latest.html", html, "utf-8"); // harmless if this wasn't actually the latest run; gets overwritten by the next real screen anyway
-  console.error(`[refresh-report] wrote ${runDir}/report.html (${html.length} bytes)`);
-
-  await supabasePatch(`atlas_runs?id=eq.${atlasRunId}`, { report_html: html, report_refreshed_at: new Date().toISOString() });
-  console.error(`[refresh-report] Supabase atlas_runs row ${atlasRunId} updated`);
 }
 
 main().catch((e) => {

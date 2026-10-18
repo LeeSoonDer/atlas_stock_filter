@@ -525,10 +525,52 @@
   - tsc clean, 339/339 tests.
   - HANDBOOK.md mirror re-synced with Stockpit's updated copy.
 
+- 2026-10-17 (part 2) - owner-chosen work: triage-first weekly report,
+  report_input.json, Radar instructions brought up to Amendments 4-6.
+  Full reasoning in decisions.md's [2026-10-17] entry.
+  - src/report/html/{renderReport,styles}.ts rewritten to
+    design-demos/triage-first.html: sticky weather strip -> tier 1 (each
+    candidate once; footprint strength + Radar rating readout) -> tier 2 ->
+    evidence column (大盘复盘 / 全板块资金流谱 / 热门领域 / 主题雷达 / 排除项 /
+    总结与前瞻 / 账本). Native <details> for disclosure (Stockpit's iframe is
+    sandboxed, scripts never ran there); sorting is progressive enhancement
+    only. 爆发/衰竭 themes get the 修正案十一 追高风险区/退潮 caveat.
+  - pipeline.ts writes output/runs/<run>/report_input.json (the exact
+    ReportInput). scripts/refresh-report.ts uses it + Radar's layer and
+    recomputes nothing (seconds, no 270 MB checkpoint read); older runs fall
+    back to reconstructReportInput() with a WARNING - that path loses the
+    sector_contagion evaluation, options intelligence and ledger state,
+    which only ever existed in memory (the real bug this fixes: a
+    contagion candidate's footprint dropped from 强 4/4 to 不可得 0/0 on any
+    refresh). First refresh keeps report.scan.html; --run-id no longer
+    overwrites output/latest.html; refresh also reads
+    atlas_runs.radar_narrative (Stockpit) and strips "[板块]"-style suffixes
+    from hotSectorVerdicts keys. preview-report.ts prefers
+    report_input.json too.
+  - ReportInput.ledgerPendingBackfill/ledgerInvalidated may be null =
+    unknown on a re-render -> 不可得, never a fabricated "0 条".
+  - docs/projects/ATLAS_RADAR_INSTRUCTIONS.md: market layer per 修正案十三's
+    order, 铁律 8-12 (修正案十/十八/十九/十六/二十), contagion narrative
+    validation (修正案二十二), market narrative scan (修正案二十三), second
+    JSON block `market_narrative`, save steps over MCP. PROJECT_SETUP_GUIDE
+    adds Amendments 4/5/6 to Radar's Knowledge. SOP_WEEKLY step 3 updated.
+  - Verified: tsc clean (src + the 3 scripts outside tsconfig), 347/347
+    tests (8 new incl. a render(JSON(input)) === render(input) round trip);
+    refresh-report run in a sandbox against a local mock Supabase in 3
+    scenarios (missing column + verdict / full narrative incl. suffixed and
+    unmatched keys / saved report_input.json), all as designed, production
+    untouched; zero horizontal overflow at a true 390 px viewport (measured
+    in an iframe - headless Edge's --window-size can't go below ~500 px, so
+    plain screenshots at 390 look clipped and mislead).
+  - NOT yet exercised: a real `npm run screen` writing report_input.json
+    (owner will run the next scan), and the real-database end-to-end
+    (needs Stockpit's radar_narrative columns, deferred by the owner).
+
 ## In Progress
-- Nothing active. Awaiting the project owner's next instruction (open
-  decisions: when to run a fresh full screen given the battery issue in
-  HANDBOOK §7.4; which Weekly Intel Briefing direction, if any, to build).
+- Nothing active. Waiting on the owner: a fresh full screen (they will run
+  it; battery caveat in HANDBOOK §7.4), applying Stockpit's radar_narrative
+  SQL, and updating the claude.ai Atlas Radar project (new instructions +
+  Amendments 4/5/6 in Knowledge).
 
 ## Next Priorities
 1. User should, at their own convenience, open a generated
@@ -539,11 +581,13 @@
    CARD_06 since SCOPE 1 was accepted-empty) remain open. Any friction
    that surfaces from finally doing this should be logged as a normal
    decisions.md entry / follow-up fix, not treated as reopening a card.
-2. Once a real Radar pass happens, its narrative output needs to be
-   threaded into pipeline.ts's renderReport() call as a
-   `radarNarrative` object - currently nothing populates this field;
-   parsing a real Radar response into that shape is unbuilt future
-   work (see ai/decisions.md's TASK_CARD_07 Part C entry).
+2. ~~Thread Radar's narrative into radarNarrative~~ - built 2026-10-17:
+   Radar saves candidate verdicts (atlas_save_radar_brief) and the market
+   narrative (atlas_save_market_narrative), scripts/refresh-report.ts
+   weaves both in. Still open: the first REAL Radar pass under the new
+   instructions, and the watchlist upgrade-trigger text 修正案十三 asks
+   for (the payload does not list watchlist names, so Radar cannot write
+   it yet - needs a payload addition first).
 3. Undecided: full per-symbol OHLCV bars still live only in
    output/checkpoint.json (now includes insider/institutional data too,
    very large), gitignored - a future card should decide their permanent

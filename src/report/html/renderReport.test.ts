@@ -573,6 +573,85 @@ test("claude_code_design_draft.md §7.2 boundary state: a dual-bucket-hit candid
   assert.ok(candSection.includes("4 项检查")); // 3 from sampleConditions + 1 dual-bucket condition, merged
 });
 
+test("triage-first: tier 1 lists each candidate exactly once (no summary card repeated by a detail layer) and comes before the evidence column", () => {
+  const html = renderReport(baseInput);
+  assert.equal((html.match(/id="cand-&lt;TEST&gt;"/g) ?? []).length, 1);
+  assert.ok(html.indexOf('id="tier1"') < html.indexOf('id="tier2"'));
+  assert.ok(html.indexOf('id="tier2"') < html.indexOf('id="evidence"'));
+  assert.ok(html.indexOf('id="evidence"') < html.indexOf('id="sector-flow"'));
+});
+
+test("triage-first: candidate evidence is a native <details> (works in Stockpit's script-less sandboxed iframe), open on the first card only", () => {
+  const html = renderReport({ ...baseInput, candidates: [candidate({ symbol: "AAA" }), candidate({ symbol: "BBB" })] });
+  assert.ok(/<details class="cand-detail" id="detail-AAA" open>/.test(html));
+  assert.ok(/<details class="cand-detail" id="detail-BBB">/.test(html));
+  assert.ok(!html.includes("data-expand-target"), "the old JS-only toggle must be gone");
+});
+
+test("triage-first: a saved Radar verdict shows grade/probability/confidence in the readout; absent -> placeholder, never a computed stand-in", () => {
+  const without = renderReport(baseInput).split('id="cand-&lt;TEST&gt;"')[1];
+  assert.ok(without.includes("评级 · 研究层"));
+  assert.ok(!without.includes("概率 "));
+  const html = renderReport({ ...baseInput, radarNarrative: { candidateVerdicts: { "<TEST>": { grade: "B-", probability: 53, confidence: 66 } } } });
+  assert.ok(html.includes("B- · 概率 53 · 确信度 66"));
+});
+
+test("triage-first: market recap - placeholder in the weather strip and #recap when absent; Radar paragraph rendered and linked when present", () => {
+  const without = renderReport(baseInput);
+  assert.ok(without.includes(`大盘复盘 · ${PLACEHOLDER_STRING()}`));
+  assert.ok(!without.includes('href="#recap">大盘复盘 ↓'));
+  const html = renderReport({ ...baseInput, radarNarrative: { marketRecapParagraph: "SPY 站上200线且宽度健康。" } });
+  assert.ok(html.includes('href="#recap">大盘复盘 ↓'));
+  assert.ok(html.split('id="recap"')[1].includes("SPY 站上200线且宽度健康。"));
+});
+
+test("triage-first: Radar sector-flow summary and hot-sector verdicts render verbatim when supplied", () => {
+  const html = renderReport({
+    ...baseInput,
+    radarNarrative: { sectorFlowSummaryLine: "资金集中在医疗。", hotSectorVerdicts: { [baseInput.hotSectorDetail[0].name]: "本周无动,热度停留在叙事层。" } },
+  });
+  assert.ok(html.split('id="sector-flow"')[1].includes("资金集中在医疗。"));
+  assert.ok(html.split('id="hot-sectors"')[1].includes("本周无动,热度停留在叙事层。"));
+});
+
+test("修正案十一: a Radar theme in 爆发 is labelled 追高风险区 and one in 衰竭 is labelled 退潮; 萌芽/发酵 carry no caveat", () => {
+  const theme = (name: string, lifecycleStage: "萌芽" | "发酵" | "爆发" | "衰竭") => ({
+    name, strengthLabel: "中" as const, lifecycleStage, footprints: ["a", "b"], members: [], verdictText: "v", falsifiableWatchpoints: ["w"],
+  });
+  const html = renderReport({ ...baseInput, radarNarrative: { emergingThemes: [theme("T1", "爆发"), theme("T2", "衰竭"), theme("T3", "发酵")] } });
+  assert.ok(html.includes("中 · 爆发 · 追高风险区"));
+  assert.ok(html.includes("中 · 衰竭 · 退潮"));
+  assert.ok(html.includes("中 · 发酵</span>"));
+});
+
+test("ledger state unknown on a re-render (null) renders 不可得, never a fabricated 0 条", () => {
+  const html = renderReport({ ...baseInput, ledgerPendingBackfill: null, ledgerInvalidated: null });
+  const ledger = html.split('id="ledger"')[1];
+  assert.ok(ledger.includes("不可得(本报告为重渲染版,未重算账本状态)"));
+  assert.ok(!ledger.includes("0 条"));
+});
+
+test("report_input.json round-trip: rendering the JSON-serialized input gives byte-identical HTML (what scripts/refresh-report.ts relies on)", () => {
+  const rich: ReportInput = {
+    ...baseInput,
+    candidates: [
+      candidate(),
+      candidate({
+        symbol: "LAGGER",
+        primaryBucket: "sector_contagion",
+        allBucketsHit: ["sector_contagion"],
+        contagion: { leaderTicker: "LEADCO", leaderMovePct: 0.15, lagGapPct: 0.12, sectorEventDate: "2026-08-20", highBetaSatellite: true },
+        optionsIntelligence: {
+          volumeOiRatioMax: 4.2, volumeOiRatioAnomaly: true, nearOtmCallOi: 1200, nearOtmCallOiChange: 300,
+          putCallRatio: 0.4, putCallRatioChange: -0.1, atmImpliedVol: 0.55, ivMove: 0.05, availability: "可得",
+        },
+      }),
+    ],
+  };
+  const roundTripped = JSON.parse(JSON.stringify(rich)) as ReportInput;
+  assert.equal(renderReport(roundTripped), renderReport(rich));
+});
+
 function PLACEHOLDER_STRING(): string {
   return "待研究层填充";
 }

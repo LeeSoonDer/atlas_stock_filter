@@ -10,7 +10,7 @@
  * Never overwrites the real run's own report.html or output/latest.html -
  * writes to a separate, clearly-labeled preview path only.
  */
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { renderReport } from "../src/report/html/index.js";
 import type { HtmlReportCandidateInput, HtmlWatchlistInput, ReportInput } from "../src/report/html/types.js";
 import type { DetectorsConfig } from "../src/screen/indicators/types.js";
@@ -46,6 +46,17 @@ const outFile = process.argv[3] ?? `${runDir}/report-preview-v2.html`;
 if (!runDir) {
   console.error("usage: npx tsx scripts/preview-report.ts <output/runs/DATE> [outFile]");
   process.exit(1);
+}
+
+// A run saved since 2026-10-17 carries the exact input its report was
+// rendered from - previewing that is faithful by construction (contagion
+// conditions, options intelligence and ledger state included). The
+// reconstruction below is only for older runs.
+const savedInputPath = `${runDir}/report_input.json`;
+if (existsSync(savedInputPath)) {
+  writeFileSync(outFile, renderReport(JSON.parse(readFileSync(savedInputPath, "utf-8")) as ReportInput), "utf-8");
+  console.error(`[preview] wrote ${outFile} from ${savedInputPath} (the scan-time render input), zero network calls.`);
+  process.exit(0);
 }
 
 const detectorsConfig = detectorsConfigJson as DetectorsConfig;
@@ -174,8 +185,8 @@ const reportInput: ReportInput = {
   candidates: htmlCandidates,
   watchlist: watchlistForHtml,
   promotedThisRun: run.selection.promotedThisRun,
-  ledgerPendingBackfill: [],
-  ledgerInvalidated: [],
+  ledgerPendingBackfill: null,
+  ledgerInvalidated: null,
 };
 
 const html = renderReport(reportInput);

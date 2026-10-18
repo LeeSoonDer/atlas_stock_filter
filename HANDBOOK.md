@@ -1,6 +1,6 @@
 # Stockpit — 完整系统手册
 
-> 快照日期:2026-09-04 初版;**2026-10-17 更新**(Lens/Dossier 并入、Outcomes 并入 Screener、Analyze 页删除、pm2 常驻移除、Atlas/Cockpit 搬到 `C:\Users\SD\Projects\`、补推工具 `push:run`)。这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
+> 快照日期:2026-09-04 初版;**2026-10-17 更新**(Lens/Dossier 并入、Outcomes 并入 Screener、Analyze 页删除、pm2 常驻移除、Atlas/Cockpit 搬到 `C:\Users\SD\Projects\`、补推工具 `push:run`、周报改为 triage-first 版式、Radar 市场层打通、`report_input.json`)。这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
 >
 > 这是**时间点快照**,不是自动更新的文档。任何具体细节在使用前都应对照实际代码复核,尤其是本文日期之后的改动。
 
@@ -204,8 +204,12 @@ Atlas 每次运行会把 NYSE + NASDAQ 约 8500 个原始标的,经过排除闸�
 |---|---|
 | `ATLAS_PAYLOAD.txt` | 完整证据包,给 Atlas Radar(研究层)分析用 |
 | `ATLAS_DISSENT_PAYLOAD.txt` | **隔离包**,只有 symbol + 桶类型,给 Red Team 攻击用 |
-| `report.html` | 自包含单文件报告(内联 CSS/SVG,浏览器直接打开) |
+| `report.html` | 自包含单文件周报(内联 CSS/SVG,浏览器直接打开),版式见下 |
+| `report_input.json` | 渲染 report.html 用的**原始输入**(2026-10-17 起)。研究层结果织回报告时直接用它重渲染,什么都不重算。板块传导的条件明细、期权情报、扫描时的账本状态只在运行时存在于内存,没有这个文件就找不回来 |
+| `report.scan.html` | 第一次织回研究层结果之前,原始扫描版报告的备份(由 `report:refresh` 自动留存) |
 | `screen_run.json` | 完整结构化输出,含全部标的的旗标、耗时分解、失败归因 |
+
+**周报版式(2026-10-17 起为 triage-first,取代 9 月的五层版)**:顶部固定一行"市场天气"(SPY 与 200 日线、VIX、领涨/领跌、市场宽度、52 周新高/新低)→ 第一层候选,每只只出现一次,右侧读数先是确定性的足迹强度,再是 Radar 评级 → 第二层观察哨表格 → 一条分隔线之下的证据列:大盘复盘、全板块资金流谱、热门领域、萌芽主题雷达、排除项、本周总结与前瞻、前向账本。所有需要判断的位置要么是 Radar 写的原文,要么是字面的「待研究层填充」。展开/收起用原生 `<details>`,因为 Stockpit 是在禁用脚本的沙箱 iframe 里显示报告的。设计稿在 `atlas/design-demos/triage-first.html`。
 
 全局文件(不按日期分):
 - `output/ledger.jsonl` —— **前向结果账本,宪法保护,只追加,进 git 版本控制**
@@ -218,10 +222,10 @@ npm run screen -- --profile <standard|small_spec|both>   # 跑一次完整筛选
 npm run ledger:stats                                      # 四桶命中率/死亡率统计
 npm run ledger:backfill -- --ticker SYM [--outcome ...]   # 手动回填结果(网页也能做)
 npm run ledger:sync                                       # 账本与 Supabase 双向同步
-npm run report:refresh [-- --run-id <id>]                 # 把 Radar 评级织回报告并重推
+npm run report:refresh [-- --run-id <id>]                 # 把 Radar 评级与市场层叙事织回报告并重推(用 report_input.json,秒级)
 npm run push:run -- --run-id <文件夹名> | --all            # 把已有的本地扫描补推到 Supabase(幂等,已存在的跳过)
 npm run typecheck                                         # tsc --noEmit
-npm test                                                  # 339 个单测
+npm test                                                  # 347 个单测
 ```
 
 **`push:run` 什么时候用**:扫描本身的推送是"尽力而为"(失败只打日志、不报错),所以推送失败或 `atlas_runs` 被清空时,网页上就看不到那次扫描。用它从 `output/runs/<文件夹>/screen_run.json` 原样补推,不用重跑 16 分钟的扫描。2026-10-17 就是用它把 9 月的 3 次扫描补回了被清空的 `atlas_runs`。
@@ -265,6 +269,7 @@ npm test                                                  # 339 个单测
 | `/api/atlas/runs/[id]` | GET | 单次扫描详情 + 关联的研究层结果 |
 | `/api/atlas/latest` | GET | 最新一次的 payload 文本(供 MCP 取用) |
 | `/api/atlas/reviews` | POST | 保存 Radar 辩护状 / 红队攻击结果 |
+| `/api/atlas/narrative` | POST | 保存 Radar 的市场层叙事(每次运行一份,重存即替换)。**先过闸门**(`lib/atlas-narrative.ts`),不合格整份退回并逐条列出原因 |
 | `/api/atlas/run` | GET/POST | 触发扫描 / 查状态(**仅本地控制面**) |
 | `/api/atlas/refresh-report` | POST | 重渲染报告(**仅本地控制面**) |
 | `/api/atlas/ledger` | GET/POST | 账本统计与待回填 / 记录一条结果 |
@@ -284,7 +289,7 @@ npm test                                                  # 339 个单测
 | 表 | 内容 | 谁写入 |
 |---|---|---|
 | `journal_entries` | 深度分析记录(评级卡、全文、结果追踪、反证) | 网页 / MCP |
-| `atlas_runs` | 每次扫描一行(报告 HTML、两份 payload、候选/观察哨结构化数据) | Atlas 推送 |
+| `atlas_runs` | 每次扫描一行(报告 HTML、两份 payload、候选/观察哨结构化数据;`radar_narrative` 存 Radar 的市场层叙事) | Atlas 推送 / MCP |
 | `atlas_reviews` | Radar 辩护状 / 红队攻击(含结构化的评级/概率/确信度) | MCP |
 | `atlas_ledger` | **账本镜像**(本地 `ledger.jsonl` 才是真相来源) | Atlas 同步 / 网页回填 |
 | `watchlist_items` | 追踪列表 | 网页 |
@@ -299,7 +304,7 @@ npm test                                                  # 339 个单测
 - 网页回填写进 Supabase → Atlas 下次运行(或手动 `npm run ledger:sync`)**拉回本地追加**
 - 幂等靠 `natural_key`,时间戳**统一归一化成 epoch 毫秒**再比对——因为 Postgres 回显 timestamptz 是 `+00:00` 格式,本地 JSON 是 `Z` 格式,同一时刻但字符串不同,直接比字符串会导致每次同步都重复追加
 
-## 4.4 MCP 桥接(15 个工具)
+## 4.4 MCP 桥接(16 个工具)
 
 `mcp-server/` 是一个**薄 HTTP 代理**:自己不含任何业务逻辑,不做任何 LLM 调用,只是把 Claude Desktop 的工具调用转发给已经在跑的 Stockpit API。
 
@@ -315,7 +320,8 @@ npm test                                                  # 339 个单测
 | `atlas_get_dissent_payload()` | 取最新扫描的隔离包 |
 | `atlas_save_radar_brief(symbol, content_text, grade?, probability?, confidence?, desc_text?)` | 保存辩护状 |
 | `atlas_save_dissent_verdict(symbol, content_text, ...)` | 保存红队攻击 |
-| `atlas_refresh_report(atlas_run_id?)` | 把评级织回报告并重推 Supabase(**仅本地控制面**) |
+| `atlas_save_market_narrative(narrative_json, atlas_run_id?)` | 保存市场层叙事:大盘复盘、资金流谱总结、热门领域判断、萌芽主题、排除项、长白话总结。过闸门:拒绝执行命令、仓位建议、止损/止盈/目标价、指数方向预测(修正案十八)、无锚点预言;每个主题必须有可证伪观察点,且至少两条足迹或三个成员(修正案十一) |
+| `atlas_refresh_report(atlas_run_id?)` | 用该次运行的 `report_input.json` 加上研究层结果(评级 + 市场层叙事)重渲染报告并重推 Supabase(**仅本地控制面**) |
 | `lens_build_evidence(ticker)` | 拉取并整理一家公司的证据包(写档案从这里开始) |
 | `lens_get_dossier(ticker)` | 读现有档案(重跑前先读) |
 | `lens_save_dossier(ticker, dossier_json, thesis_status?)` | 保存档案,过闸门 |
@@ -347,9 +353,9 @@ npm test                                                  # 339 个单测
 | 1 | 打开 `localhost:3000`(自动跳到 `/screener`),点「Run screen now」 | 一次点击 |
 | 2 | 等待(热缓存约 16 分钟) | 全自动,跑完导航出现未读圆点 |
 | 3 | 点开报告看候选 | 一次点击 |
-| 4 | Claude Desktop 打开 Atlas Radar 项目,说一句"读取最新扫描并出辩护状" | **一句话**,Claude 自己调工具取数据、分析、存回 |
+| 4 | Claude Desktop 打开 Atlas Radar 项目,说一句"读取最新扫描并出辩护状" | **一句话**,Claude 自己取数据,写市场层(大盘复盘、板块扫描、主题雷达、排除项、长白话总结)和每只候选的辩护状,逐只存辩护状、存市场层叙事,最后织回报告 |
 | 5 | 同上,Atlas Red Team 项目 | **一句话** |
-| 6 | 回网页看织入评级后的报告 | 自动 |
+| 6 | 回网页看织入研究层结果的报告(运行详情页顶部会显示辩护状几份、市场层叙事是否已保存、报告是否已织入) | 自动 |
 | 7 | 决定深研哪只 → 点候选旁的「Deep research」按钮 | 一次点击(复制现成指令) |
 | 8 | 粘进 Claude Desktop 的分析项目 | 一次粘贴 |
 | 9 | (数周后)Screener 的 **Outcomes** tab 点「已重定价/已失效/已过期」回填账本 | 一次点击 |
@@ -475,11 +481,18 @@ C:\Users\SD\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claud
 
 **一旦挂到公网 URL,它就是唯一的门,而且可被脚本无限次爆破。** 至少要:在 Vercel 环境变量里单独设一个长的随机密码(不必和本地一致,两套配置本来就独立)。更彻底的方案是换成有速率限制的真会话机制或 Supabase Auth——这件事**已被明确识别但尚未实施**。
 
-## 7.2 报告里永远填不满的占位符
+## 7.2 报告里的市场级占位符(2026-10-17 已打通)
 
-`atlas_refresh_report` 只能填**每个候选的评级/概率/确信度/描述**。报告里的「市场复盘」「板块判断」「萌芽主题」「本周总结」这四类占位符**不会被填上**——因为 `ATLAS_RADAR_INSTRUCTIONS.md` 的职责范围本来就只有"逐候选出辩护状",它根本不产出市场级/主题级的叙事内容。
+原先 `atlas_refresh_report` 只能填每个候选的评级/概率/确信度/描述,「大盘复盘」「板块判断」「萌芽主题」「排除项」「本周总结」永远是「待研究层填充」。原因是 Radar 指令只写了逐候选辩护状,而宪法第四号修正案(十至十三)和第六号修正案(二十三)早就要求研究层产出这些内容,指令一直没跟上。
 
-这不是 bug,是提示词范围的问题。要填上必须扩写 Radar 的指令本身——这是一个独立的、需要单独决策的产品改动。
+现在三处都补上了:
+- **指令**:`atlas/docs/projects/ATLAS_RADAR_INSTRUCTIONS.md` 按修正案十三的顺序产出市场层,尾部附 `market_narrative` JSON
+- **存储**:`atlas_runs.radar_narrative` 列 + `atlas_save_market_narrative` 工具 + 写入闸门
+- **渲染**:`report:refresh` 把它织进报告
+
+**生效前提**:Supabase 里要跑过 schema 中加 `radar_narrative` 列的两行 SQL;claude.ai 的 Atlas Radar 项目要换上新指令,并把第四、五、六号修正案上传到 Knowledge(见 `atlas/docs/projects/PROJECT_SETUP_GUIDE.md`)。
+
+**旧扫描的局限**:9 月的三次扫描没有 `report_input.json`。对它们做 refresh 只能从 `screen_run.json` 重建,板块传导的条件明细、期权情报和账本状态会显示为「不可得」,原始扫描版另存为 `report.scan.html`。
 
 ## 7.3 免费额度的真实边界
 
@@ -548,13 +561,25 @@ Atlas 扫描 → Supabase → 网页展示 → Claude Desktop 出辩护状 → �
   - 全部页面和 API 返回 200
   - MCP 15 个工具可列出,只读调用全部成功
 
+**2026-10-17 新开发**(使用者选定):
+- **周报改版为 triage-first**(§3.4)
+- **Radar 市场层打通**(§7.2):新指令、`radar_narrative` 存储、写入闸门、`atlas_save_market_narrative`(MCP 共 16 个工具)
+- **`report_input.json`**:织回研究层结果时不再重算,也不再丢失板块传导明细、期权情报和账本状态;重渲染从读 270MB 缓存变成几秒钟
+- 重渲染时账本状态未知就显示「不可得」,不再假装是「0 条」
+- 验证结果:
+  - Atlas:347/347 单测通过
+  - Stockpit:`tsc` 干净,`check:lens` PASS(184 个文件)
+  - 写入闸门:事实性陈述零误杀(两轮独立验证共 49 句)。但它只能拦最直白的违规:第二轮新写的 35 种建议类说法漏掉 26 种,另有 16 条针对性构造句被误杀。同一子任务两轮未过,按熔断规则停手,方向交使用者定(见 §9.2)
+  - 真实 390px 视口下零横向溢出
+
 ## 9.2 待办(按优先级)
 
 1. **修笔记本电池**(见 §7.4)—— 在此之前避免跑完整扫描
 2. **确认公网密码够强**(见 §7.1)—— 目前 Vercel 生成的网址外面还套着一层 Vercel 登录(SSO),多了一道门;但 Vercel 后台 `ACCESS_PASSWORD` 的强度只能在 Vercel 控制台里看
-3. **Atlas 周报改版选方向** —— `atlas/docs` 里已有设计说明和两个示意(`bucket-centric.html` / `triage-first.html`),还没选、没实现
+3. **更新 claude.ai 的 Atlas Radar 项目** —— 换上新的 `ATLAS_RADAR_INSTRUCTIONS.md`,Knowledge 补传第四、五、六号修正案(§7.2)
+3b. **市场层叙事闸门定方向**(`lib/atlas-narrative.ts`):(A)维持现状,当作只拦明显违规的后备;(B)只留机械规则(键名、枚举、主题的足迹/成员/可证伪观察点数量、「立即买入/卖出」原文),撤掉其余词法规则;(C)换思路另做。在跑 radar_narrative 的 SQL 之前,闸门不会被用到
 4. **BYOK(填 API key 在网页跑分析)** —— 已完整设计但未实施。要点:访客的 key **绝不能存进数据库**,只存浏览器 session、每次请求当头部发、后端用完即丢;访客产出的数据要与本人真实记录完全隔离;先只接 Anthropic 一家,架构留可插拔;Atlas 扫描不应开放给访客触发(它不是个性化的,而且触发扫描根本不需要 LLM key,拿 key 当门槛挡不住滥用)
-5. **Radar 提示词扩写**(见 §7.2)—— 让市场级占位符也能被填上
+5. **观察哨升级条件**(修正案十三要求"标注升级触发条件")—— payload 目前不逐只列出观察哨,Radar 无从写起;要做得先给 payload 加观察哨明细
 6. **金丝雀测试**(`CANARY.md`、Atlas 的 PROJECT_SETUP_GUIDE)—— 还没放真实冻结样本
 7. **TASK_CARD_09/10 的新信号需要 3–4 轮真实扫描作基线**,在那之前不要下"有效/无效"的结论
 

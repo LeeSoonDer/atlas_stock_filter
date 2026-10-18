@@ -25,7 +25,7 @@ npm run screen -- --profile both    # 或 standard / small_spec
 
 1. 复制 ATLAS PAYLOAD 全文
 2. 贴入 Atlas Radar Project 新对话
-3. 收辩护状(每候选一份 + 尾部 JSON 块)
+3. 收 Radar 全文(大盘复盘、全板块扫描、主题雷达、每候选辩护状、排除项、长白话总结)+ 尾部两个 JSON 块(候选摘要卡 / market_narrative)
 4. 全文存入本次运行的日期文件夹:output/runs/{date}/brief.md(与同次运行的 PAYLOAD/报告并排存放,方便对照)
 
 ## 第 4 步:Red Team 攻击(10 分钟)
