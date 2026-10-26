@@ -1,6 +1,6 @@
 # Atlas — System Reference
 
-> **2026-10-17 note:** historical document from the Cockpit era. Current paths, run procedure (no pm2; `npm run dev` on demand) and status live in the repo-root `HANDBOOK.md`, which wins on any conflict. Atlas now lives at `C:\Users\SD\Projects\atlas`.
+> **2026-10-17 note:** historical document from the Cockpit era. Current paths, run procedure (no pm2; `npm run dev` on demand) and status live in the repo-root `HANDBOOK.md`, which wins on any conflict. Since 2026-10-25 everything lives under `C:\Users\SD\Projects\stockpit-suite\` (stockpit, atlas, v5-prompts; this Cockpit is `_archive\cockpit-v1`).
 
 > Snapshot date: 2026-08-31. Written for an AI session that has never seen this repo, so it can reach the same working understanding a human operator already has. This is a point-in-time technical inventory, not living documentation — re-derive from the code (`git log`, actual file contents) before trusting any specific detail on a later date.
 
@@ -8,7 +8,7 @@
 
 Atlas ("Attention Allocation Engine" / 注意力配置引擎) is a **deterministic, on-demand TypeScript/Node CLI** that scans the full NYSE+NASDAQ US equity universe (~5,000+ raw symbols) and routes a research operator's limited attention to a small set of candidates showing structural/technical/institutional evidence convergence. It does **not** predict the market, does **not** manage a portfolio, and makes **zero LLM calls anywhere in this repo** — that is a constitutional hard rule, not a current limitation.
 
-Repo root: `C:\Users\SD\Projects\atlas` (moved from Desktop 2026-09-15). Single git repo, currently tagged `v1.0-layer1`.
+Repo root: `C:\Users\SD\Projects\stockpit-suite\atlas` (Desktop until 2026-09-15, `Projects\atlas` until 2026-10-25). Single git repo, currently tagged `v1.0-layer1`.
 
 Non-goals (explicit, from `ai/project_overview.md`): no LLM calls, no scoring/ranking beyond the four detectors, no UI framework/dashboard, no scheduled/cron execution (on-demand only), no automated handoff to Cockpit, no biotech/M&A/distressed-asset engines, no 13F parsing (deferred), no paid data dependencies (Yahoo Finance is primary; FMP is post-screen enrichment only).
 

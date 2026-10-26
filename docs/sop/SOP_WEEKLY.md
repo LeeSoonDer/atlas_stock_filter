@@ -7,7 +7,7 @@
 ## 第 1 步:跑筛选(挂机 30 至 90 分钟,无需盯)
 
 ```powershell
-cd C:\Users\SD\Projects\atlas
+cd C:\Users\SD\Projects\stockpit-suite\atlas
 npm run screen -- --profile both    # 或 standard / small_spec
 ```
 

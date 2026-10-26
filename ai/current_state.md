@@ -566,11 +566,39 @@
     (owner will run the next scan), and the real-database end-to-end
     (needs Stockpit's radar_narrative columns, deferred by the owner).
 
+- 2026-10-25 - repo moved to C:\Users\SD\Projects\stockpit-suite\atlas
+  (owner-approved reorganisation; stockpit and v5-prompts are siblings,
+  frozen Cockpit and history under stockpit-suite\_archive). All paths in
+  the repo are relative, so nothing in code changed for the move; 347/347
+  tests + tsc re-run from the new location. SOP_WEEKLY cd path and the
+  system-reference banners updated. refresh-report.ts error exits now use
+  process.exitCode (no libuv assertion noise in the MCP tool result).
+  Stockpit's scheduled-tasks/atlas-weekly-radar.md runs `npm run screen`
+  here unattended, after an AC-power check and a checkpoint.json backup.
+  The owner applied the radar_narrative SQL and updated the claude.ai
+  Atlas Radar project (instructions + Amendments 4/5/6) on 2026-10-25.
+  docs/projects/ATLAS_RED_TEAM_INSTRUCTIONS.md now has a tool entry
+  ("读取最新隔离包" -> atlas_get_dissent_payload only; never the full
+  payload or Radar briefs - the server does not enforce this, the
+  instructions do), "至多三个第一层候选" to match the real dissent payload,
+  and a save section (one atlas_save_dissent_verdict per candidate, the
+  list-level blind-spot audit appended to the last one). The owner must
+  re-paste it into the claude.ai Atlas Red Team project.
+  PROJECT_SETUP_GUIDE now covers all five Claude projects.
+
+- 2026-10-26 - ledger stats count the fifth bucket. src/ledger/stats.ts
+  now iterates STATS_BUCKETS = BUCKET_ORDER + "sector_contagion"
+  (修正案二十二's 第五桶, which takes up to half of each run's seats);
+  before this, every contagion candidate was silently missing from
+  `npm run ledger:stats` and from Stockpit's Outcomes table (the live
+  ledger has 8). BUCKET_ORDER itself stays 4 long because
+  selectCandidates round-robins over it after contagion's reserved
+  seats. 348/348 tests (one new) + tsc. README's ledger:stats row
+  updated; Stockpit's /api/atlas/ledger and Outcomes panel match.
+
 ## In Progress
-- Nothing active. Waiting on the owner: a fresh full screen (they will run
-  it; battery caveat in HANDBOOK §7.4), applying Stockpit's radar_narrative
-  SQL, and updating the claude.ai Atlas Radar project (new instructions +
-  Amendments 4/5/6 in Knowledge).
+- Nothing active. Waiting on the owner: a fresh full screen (manually, or
+  via the Claude Desktop scheduled task once they enable it).
 
 ## Next Priorities
 1. User should, at their own convenience, open a generated

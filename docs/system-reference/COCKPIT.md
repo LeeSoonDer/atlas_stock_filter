@@ -1,6 +1,6 @@
 # Cockpit — System Reference
 
-> **2026-10-17 note:** historical document from the Cockpit era. Current paths, run procedure (no pm2; `npm run dev` on demand) and status live in the repo-root `HANDBOOK.md`, which wins on any conflict. Atlas now lives at `C:\Users\SD\Projects\atlas`.
+> **2026-10-17 note:** historical document from the Cockpit era. Current paths, run procedure (no pm2; `npm run dev` on demand) and status live in the repo-root `HANDBOOK.md`, which wins on any conflict. Since 2026-10-25 everything lives under `C:\Users\SD\Projects\stockpit-suite\` (stockpit, atlas, v5-prompts; this Cockpit is `_archive\cockpit-v1`).
 
 > Snapshot date: 2026-08-31, compiled via direct code exploration of `C:\Users\SD\Desktop\stock-research-cockpit` (a real, working Next.js app — a separate git repo, sibling directory to Atlas, same author/operator). Written for an AI session that has never seen this codebase. This is a point-in-time technical inventory, not living documentation — re-derive from the code before trusting a specific detail on a later date.
 

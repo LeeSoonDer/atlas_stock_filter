@@ -1,4 +1,4 @@
-# claude.ai 双 Project 组建指南
+# claude.ai Project 组建指南(Atlas 的两个 + 另外三个的去处)
 
 ## Project 1: Atlas Radar
 
@@ -13,19 +13,25 @@
    * ATLAS_AMENDMENT_NO4_THEME_RADAR.md(足迹锚定、主题雷达、全板块扫描、长白话总结,新指令的市场层章节以它为准)
    * ATLAS_AMENDMENT_NO5_SIGNAL_REFINEMENT.md(信用闸、期权诚实标注、宽度只描述不预测、集中度不给仓位)
    * ATLAS_AMENDMENT_NO6_CONTAGION.md(筛选宽容度、板块传导叙事验证、市场叙事扫描)
-4. 在 Claude Desktop 里使用时,stockpit 的 MCP 工具会自动可用(先在 Stockpit 目录 `npm run dev`),说"读取最新扫描并出辩护状"即可
+4. 在 Claude Desktop 里用:先双击桌面「启动 Stockpit」让网站跑起来,stockpit 的 MCP 工具就可用了,然后说"读取最新扫描并出辩护状"
 
 ## Project 2: Atlas Red Team
 
 1. 新建 Project,命名 `Atlas Red Team`
-2. Instructions 栏:贴入 `ATLAS_RED_TEAM_INSTRUCTIONS.md` 全文
+2. Instructions 栏:贴入 `ATLAS_RED_TEAM_INSTRUCTIONS.md` 全文(2026-10-25 起含工具入口和保存一节;已有的 Project 要整段替换)
 3. Knowledge **只**上传:
    * ATLAS_MEMO_NO4_FINAL_ADJUDICATIONS.md(含红队分级制)
    * **严禁**上传 Radar 指令、五引擎材料或任何正方推理框架——隔离是功能本体
+4. 在 Claude Desktop 里用,开新对话说"读取最新隔离包并出红队攻击"。它只会调 `atlas_get_dissent_payload`,不会去取正方证据包
 
-## 四 Project 共存纪律
+## 另外三个 Project(不在本仓库)
 
-账号内将有四个 Project:Stock Research v5 / Dissent Auditor / Atlas Radar / Atlas Red Team。
+* **Stock Research v5**、**Dissent Auditor**:配置见 `stockpit-suite\v5-prompts\project_instructions\README.md`
+* **Lens**:Instructions 贴 `stockpit-suite\stockpit\reasoning\LENS_INSTRUCTIONS.md`;它所依据的手册 `reasoning\COMPANY_INTELLIGENCE_MANUAL.md` 建议传进 Knowledge
+
+## 五 Project 共存纪律
+
+账号内共有五个 Project:Stock Research v5 / Dissent Auditor / Atlas Radar / Atlas Red Team / Lens。
 * 严禁互相上传对方材料
 * Atlas 候选送 Cockpit 深研时,只递交 ticker(第三号备忘录 Q3 裁决),不递交 Atlas 辩护状全文,保持 Cockpit 分析的独立起点
 

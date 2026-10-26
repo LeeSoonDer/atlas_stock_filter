@@ -602,3 +602,9 @@ Future implications: 观察哨的"升级触发条件"(修正案十三)仍没有�
 2. 读 atlas_reviews 时按 created_at 升序。辩护状是插入不是覆盖,重存后同一 symbol 有两行,原先哪一行生效取决于数据库返回顺序;现在最新的那份生效。
 
 同日渲染器小修:排除项的代码列表可换行(7 个以上代码在手机上会被截断);"四桶"改"五桶"(板块传导是第五桶,总命中次数本来就把它算在内);renderReport 的文档注释改为如实说明哪些固定措辞是宪法为确定性旗标规定的警示。
+
+## [2026-10-25] 仓库搬到 C:\Users\SD\Projects\stockpit-suite\atlas;refresh-report 出错改用 exitCode
+
+1. 使用者批准的目录整理:Atlas 从 `Projects\atlas` 搬到 `Projects\stockpit-suite\atlas`,和 stockpit、v5-prompts 放在一起。所有路径都是相对的(output/、checkpoint、配置 JSON),搬家后 347/347 测试、tsc、push/refresh 脚本都照常工作。Stockpit 的 `ATLAS_REPO_PATH` 已同步。`docs/sop/SOP_WEEKLY.md` 的 cd 路径和 system-reference 的横幅也已更新;SETUP.md 和 BUILD_TO_LAUNCH_ROADMAP.md 记录的是当初建仓的步骤,属于历史,未改。
+2. `scripts/refresh-report.ts` 的出错路径从 `process.exit(1)` 改为 `process.exitCode = 1; return`。原因和 push-run.ts 一样:fetch 句柄还在关闭时退出,会在 Windows 上触发 libuv 断言,这行噪音会原样出现在 Claude 调 `atlas_refresh_report` 的工具结果里,看起来像崩溃。
+3. Stockpit 那边的 `scheduled-tasks/atlas-weekly-radar.md` 会直接在本仓库运行 `npm run screen -- --profile both`;运行前先检查是否接着交流电,并把 `output/checkpoint.json` 备份为 `checkpoint.json.bak`。

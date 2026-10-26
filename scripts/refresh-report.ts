@@ -179,7 +179,11 @@ async function main() {
   }
   if (!runs.length) {
     console.error(requestedRunId ? `[refresh-report] no atlas_runs row for id ${requestedRunId}` : "[refresh-report] no atlas_runs rows exist yet");
-    process.exit(1);
+    // exitCode + return, not exit(): exiting while a fetch handle is still
+    // closing trips a libuv assertion on Windows (Node 24) and the noise ends
+    // up in the MCP tool result. Same fix as scripts/push-run.ts.
+    process.exitCode = 1;
+    return;
   }
   const { id: atlasRunId, run_timestamp: runTimestamp } = runs[0];
   const marketNarrative = pickMarketNarrative(runs[0].radar_narrative);
@@ -188,7 +192,8 @@ async function main() {
   const runDir = findRunFolderByTimestamp(runTimestamp);
   if (!runDir) {
     console.error(`[refresh-report] no local output/runs/* folder found with runMeta.timestamp=${runTimestamp} - this machine may not be the one that produced this run.`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   console.error(`[refresh-report] local run folder: ${runDir}`);
 
@@ -385,5 +390,5 @@ function reconstructReportInput(runDir: string): ReportInput {
 
 main().catch((e) => {
   console.error(`[refresh-report] fatal error: ${(e as Error).stack ?? e}`);
-  process.exit(1);
+  process.exitCode = 1;
 });

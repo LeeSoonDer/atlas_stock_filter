@@ -1,6 +1,6 @@
 # Stockpit — 完整系统手册
 
-> 快照日期:2026-09-04 初版;**2026-10-17 更新**(Lens/Dossier 并入、Outcomes 并入 Screener、Analyze 页删除、pm2 常驻移除、Atlas/Cockpit 搬到 `C:\Users\SD\Projects\`、补推工具 `push:run`、周报改为 triage-first 版式、Radar 市场层打通、`report_input.json`)。这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
+> 快照日期:2026-09-04 初版;**2026-10-17 更新**(Lens/Dossier 并入、Outcomes 并入 Screener、Analyze 页删除、pm2 常驻移除、Atlas/Cockpit 搬到 `C:\Users\SD\Projects\`、补推工具 `push:run`、周报改为 triage-first 版式、Radar 市场层打通、`report_input.json`);**2026-10-25 更新**(全部收进 `C:\Users\SD\Projects\stockpit-suite\`、桌面启动器、只对本机开放、Claude Desktop 本地定时任务)。**日常怎么用看 [`使用指南.md`](使用指南.md),本手册讲的是"为什么"和"怎么运作"。** 这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
 >
 > 这是**时间点快照**,不是自动更新的文档。任何具体细节在使用前都应对照实际代码复核,尤其是本文日期之后的改动。
 
@@ -82,11 +82,11 @@ Atlas 和 Stockpit 的代码里**零 LLM 调用**。它们只做三件事:拉取
 
 | 仓库 | GitHub | 角色 | 本地路径 |
 |---|---|---|---|
-| **Atlas** | `LeeSoonDer/atlas_stock_filter` | 筛选引擎(CLI,无网页) | `C:\Users\SD\Projects\atlas` |
-| **Stockpit** | `LeeSoonDer/stockpit`(private) | 网页产品(枢纽),含 Lens | `C:\Users\SD\Desktop\stockpit` |
-| **Cockpit** | `LeeSoonDer/stock-research-cockpit` | **冻结存档**,原版单机工具 | `C:\Users\SD\Projects\stock-research-cockpit` |
+| **Atlas** | `LeeSoonDer/atlas_stock_filter` | 筛选引擎(CLI,无网页) | `C:\Users\SD\Projects\stockpit-suite\atlas` |
+| **Stockpit** | `LeeSoonDer/stockpit`(private) | 网页产品(枢纽),含 Lens | `C:\Users\SD\Projects\stockpit-suite\stockpit` |
+| **Cockpit** | `LeeSoonDer/stock-research-cockpit` | **冻结存档**,原版单机工具 | `C:\Users\SD\Projects\stockpit-suite\_archive\cockpit-v1` |
 
-(2026-09-15 Atlas 和 Cockpit 从桌面搬到 `Projects\`;Stockpit 仍在桌面。搬家后 `ATLAS_REPO_PATH` 必须跟着改,见 §6.1。)
+(2026-10-25 起三个仓库都在 `C:\Users\SD\Projects\stockpit-suite\` 下,和 v5 提示词库、归档放在一起;桌面上的「启动 Stockpit」是启动器。目录再搬家时 `ATLAS_REPO_PATH` 和 Claude Desktop 的 MCP 配置路径必须跟着改,见 §6.1、§6.3。)
 
 ### 为什么是三个而不是一个 monorepo
 
@@ -118,21 +118,23 @@ Atlas 和 Stockpit 的代码里**零 LLM 调用**。它们只做三件事:拉取
                      │ 读 / 写
                      ▼
 ┌─────────────────────────────────────────────────────┐
-│  Supabase(免费云端 Postgres)= 唯一真相来源            │
+│  Supabase(免费云端 Postgres)= 真相来源(账本除外)      │
 │  journal_entries / atlas_runs / atlas_reviews /      │
 │  atlas_ledger / watchlist_items / app_settings /     │
 │  lens_dossiers / lens_snapshots / lens_leads         │
 └────────────────────┬────────────────────────────────┘
-                     │ 只读
+                     │ 读写
                      ▼
 ┌─────────────────────────────────────────────────────┐
 │  展示平面 = Vercel(公网)                             │
-│  同一份代码,只读展示,任何设备浏览器可访问              │
+│  同一份代码,能看能改,任何设备浏览器可访问              │
 │  没有"运行扫描"按钮(碰不到你电脑上的 Atlas)           │
 └─────────────────────────────────────────────────────┘
 ```
 
-**同一份代码部署两次**,靠环境变量 `IS_LOCAL_CONTROL_PLANE=true` 决定是否渲染/启用需要本地文件系统的功能。这样不会出现"点了按钮但云端函数根本碰不到我电脑"的死路。
+**同一份代码部署两次**,靠环境变量 `IS_LOCAL_CONTROL_PLANE=true` 决定是否渲染/启用需要本地文件系统的功能。这样不会出现"点了按钮但云端函数根本碰不到我电脑"的死路。这个开关只管「运行扫描」和「刷新周报」两条路由;Vercel 上其他写操作(Watchlist、Outcomes 回填、Journal 删除和导入、Settings、Dossier 快照)照常写进同一个数据库,"展示平面"不等于只读。
+
+**账本例外**:`atlas_ledger` 是 Atlas 本地 `output/ledger.jsonl` 的镜像,正本在本地(见第四部分的数据表)。
 
 **为什么重计算必须留在本地**:Vercel serverless function 上限 300 秒;Atlas 一次完整扫描热缓存约 16 分钟,冷启动可达 2.5-3 小时(EDGAR Form 4 回溯)。结构上放不进去。
 
@@ -219,7 +221,7 @@ Atlas 每次运行会把 NYSE + NASDAQ 约 8500 个原始标的,经过排除闸�
 
 ```bash
 npm run screen -- --profile <standard|small_spec|both>   # 跑一次完整筛选
-npm run ledger:stats                                      # 四桶命中率/死亡率统计
+npm run ledger:stats                                      # 五桶命中率/死亡率统计(含板块传导)
 npm run ledger:backfill -- --ticker SYM [--outcome ...]   # 手动回填结果(网页也能做)
 npm run ledger:sync                                       # 账本与 Supabase 双向同步
 npm run report:refresh [-- --run-id <id>]                 # 把 Radar 评级与市场层叙事织回报告并重推(用 report_input.json,秒级)
@@ -242,14 +244,14 @@ npm test                                                  # 347 个单测
 
 | 路由 | 导航名 | 作用 |
 |---|---|---|
-| `/screener` | **Screener** | 两个 tab:**Runs**(扫描历史 + 运行按钮(仅本地)) 和 **Outcomes**(`?tab=outcomes`,账本:四桶命中率 + 待回填列表 + 一键标记结果) |
+| `/screener` | **Screener** | 两个 tab:**Runs**(扫描历史 + 运行按钮(仅本地)) 和 **Outcomes**(`?tab=outcomes`,账本:五桶命中率 + 待回填列表 + 一键标记结果;待回填列表含观察哨行,它们不进统计) |
 | `/screener/[id]` | — | 单次扫描详情:候选列表(带「Deep research」交接按钮和已深研标记)+ 内嵌完整报告 + Radar/红队结果 |
 | `/dossier` | **Dossier** | Lens 公司档案列表 + 证据包构建器(复制到剪贴板) |
 | `/dossier/[ticker]` | — | 单家公司档案:两层楼视图、13 条因果链、每条 claim 的标签与来源、kill-criteria、完成度清单 |
 | `/journal` | **Journal** | 深度分析记录(聚合/表格/卡片三视图、筛选、图表、导出) |
 | `/watchlist` | **Watchlist** | 追踪标的 + 实时报价 + 四类预警 |
 | `/report/[id]` | — | 单次深度分析的完整可打印视图(研究报告级 PDF) |
-| `/settings` | (右上角) | 仓位计算器参数 + 数据导入导出 |
+| `/settings` | (右上角) | 旧版本地数据迁移 + JSON 导入(先删后写,会替换全部记录;导出在 `/journal`)。仓位参数仍可保存,但读取它的 `PositionCalculator` 只挂在 `RatingCardView` 里,而后者已没有页面引用 |
 | `/` | — | 重定向到 `/screener`。原 Analyze 页面已于 2026-09-06 删除;`/api/payload` 不受影响(MCP 用的是它),`components/analyze-form.tsx` 留作以后 BYOK 的落点 |
 | `/outcomes` | — | 重定向到 `/screener?tab=outcomes`,旧链接仍可用 |
 
@@ -349,7 +351,7 @@ npm test                                                  # 347 个单测
 
 | 步骤 | 操作 | 自动化程度 |
 |---|---|---|
-| 0 | 插电源;在 `C:\Users\SD\Desktop\stockpit` 运行 `npm run dev`(用完 Ctrl+C 关掉,见 §6.2) | 一条命令 |
+| 0 | 插电源;双击桌面「启动 Stockpit」(或在 `C:\Users\SD\Projects\stockpit-suite\stockpit` 运行 `npm run dev`);用完关掉那个窗口,见 §6.2 | 一次双击 |
 | 1 | 打开 `localhost:3000`(自动跳到 `/screener`),点「Run screen now」 | 一次点击 |
 | 2 | 等待(热缓存约 16 分钟) | 全自动,跑完导航出现未读圆点 |
 | 3 | 点开报告看候选 | 一次点击 |
@@ -373,13 +375,23 @@ npm test                                                  # 347 个单测
 | 3 | 网页 `/dossier/XXX` 查看;完成度清单没满的档案会显示为未完成 |
 | 4 | 财报后:说"刷新 XXX 的证据"(`lens_refresh_evidence`)看变化报告;需要重新推理时先 `lens_get_dossier` 再按差异更新 |
 
-## 5.2 无法自动化的那一步,以及为什么
+## 5.2 哪些步骤能自动化(2026-10-25 改写)
 
-第 4、5、8 步**必须有人在场**——需要你本人打开 Claude Desktop 说一句话。
+**以前的结论已经不成立。** 9 月写这一节时,一次 Claude 对话在结构上无法被后台无人触发,所以第 4、5 步(Radar、红队)必须有人在场。现在 Claude Desktop 有**本地定时任务**:按时间表在本机开一个 Claude Code 会话,用你的订阅(不是付费 API),能读写本地文件,也能用配置好的 MCP 工具([官方说明](https://code.claude.com/docs/en/desktop-scheduled-tasks))。原则五($0)和原则一(判断在 Claude 里、不在应用代码里)都不受影响。
 
-原因很具体,不是"技术难":一次 claude.ai / Claude Desktop 的**对话**在结构上无法被后台无人触发。能被脚本定时调用的只有付费的 Anthropic API,而那违反原则五($0 成本)。
+写好的任务在 `scheduled-tasks/`(设置步骤见那里的 README):
 
-**这是"不用付费 API"能做到的天花板。** 要突破它只有三条路,每条都有明确代价:
+- `atlas-weekly-radar`:先检查是否接电源(电池问题,见 §7.4)→ 备份 checkpoint → 扫描 → Radar → 织回报告
+- `atlas-weekly-red-team`:**另一个会话**,只调 `atlas_get_dissent_payload`。它从没见过 Radar 的推理,所以原则四的隔离是结构上的,不是靠约定
+- `lens-monthly-refresh`:只刷新 SEC 数字、列变化清单,不重新推理
+
+前提:Claude Desktop 开着、电脑醒着(打开 Keep computer awake)、接着电源;Claude Code 注册了 stockpit MCP(运行 `scheduled-tasks/register-stockpit-mcp.ps1`。别手打 `claude mcp add … -- node …`:Windows PowerShell 调用 npm 的 `claude.ps1` 时会吞掉 `--`,脚本改调 `claude.cmd` 避开了这个坑);第一次手动 Run now,把权限设为 always allow。红队任务排在 15:00:Desktop 在别的定时任务还在跑时会**跳过**到点的任务,而冷缓存扫描最长要 3 小时。
+
+**仍然刻意留给人的**:人类裁决(挑哪只送深研,SOP 第 5 步,宪法闸门)、深研本身、Outcomes 回填。这几步自动化,等于让系统替你下判断。
+
+### 历史备注:9 月时对"突破人必须在场"的三条路的分析
+
+当时的三条路(现在被本地定时任务取代):
 
 1. **用付费 Anthropic API** —— 放弃 $0 成本(按当前用量估算每月几毛到几块钱)
 2. **用免费额度的其他模型 API**(Gemini/Groq 等) —— $0 成本可行,但**出分析的不再是 Claude**。你的 Radar/红队/V5 提示词是针对 Claude 行为反复调校的,换模型是"谁在帮你做判断"这个产品层面的真实变化,不是基础设施替换
@@ -412,7 +424,7 @@ npm test                                                  # 347 个单测
 | `SUPABASE_SERVICE_ROLE_KEY` | **必需** | 同上 |
 | `ACCESS_PASSWORD` | **必需** | 缺失时全站 401(fail closed,不是 fail open) |
 | `IS_LOCAL_CONTROL_PLANE` | 本地设 `true` | 决定「运行扫描」按钮是否出现/生效 |
-| `ATLAS_REPO_PATH` | 本地必需 | Atlas 仓库绝对路径,触发扫描和报告回写时用。当前值应为 `C:\Users\SD\Projects\atlas`。**不要用 Git Bash 的 sed/echo 写它**:反斜杠会被吃掉。2026-10 发现它被写成了 `C:SERSSDDESKTOP<响铃符>TLAS`,扫描按钮因此失效。现在两个路由会先校验路径下有 `package.json` 和 `output/`,不对就直接报错并指出这个变量 |
+| `ATLAS_REPO_PATH` | 本地必需 | Atlas 仓库绝对路径,触发扫描和报告回写时用。当前值应为 `C:\Users\SD\Projects\stockpit-suite\atlas`。**不要用 Git Bash 的 sed/echo 写它**:反斜杠会被吃掉。2026-10 发现它被写成了 `C:SERSSDDESKTOP<响铃符>TLAS`,扫描按钮因此失效。现在两个路由会先校验路径下有 `package.json` 和 `output/`,不对就直接报错并指出这个变量 |
 | `FMP_API_KEY` / `FINNHUB_API_KEY` / `FRED_API_KEY` | 选填 | 缺失时对应数据显示「不可得」,不影响其余流程 |
 
 ### Stockpit on Vercel
@@ -425,10 +437,14 @@ npm test                                                  # 347 个单测
 
 ## 6.2 本地按需运行(pm2 常驻已于 2026-09-16 移除)
 
+日常用桌面上的 **「启动 Stockpit」**:双击后在那个窗口里运行 `npm run dev`,10 秒后自动打开浏览器;关掉窗口,网站就停了。等价的手动方式:
+
 ```powershell
-cd C:\Users\SD\Desktop\stockpit
+cd C:\Users\SD\Projects\stockpit-suite\stockpit
 npm run dev        # 用完 Ctrl+C
 ```
+
+**2026-10-25 起 `npm run dev` 是 `next dev -H 127.0.0.1`**:只监听本机,同一 Wi-Fi 里的其他设备连不上。下面第 2 条安全顾虑因此大为缓解。已实测:浏览器访问 `localhost:3000`、MCP 的 node fetch 都正常,局域网 IP 会被拒绝。
 
 **为什么不再常驻**:
 1. 常驻的 `next dev` 会带着文件监视器持续编译,吃 CPU 和内存,而这台机器的 16GB 内存本来就紧。
@@ -437,6 +453,8 @@ npm run dev        # 用完 Ctrl+C
 所以不要再用 pm2 或任何方式设成开机自启。`ecosystem.config.js` 留在仓库里只是历史,不再使用。
 
 **副作用**:「Run screen now」的运行状态只记在内存里。扫描进行中如果关掉 dev server,Atlas 子进程会继续跑完,只是网页不再显示"运行中"。所以扫描期间别关服务器。
+
+**扫描窗口**(2026-10-26 实测):`app/api/atlas/run/route.ts` 用 `detached: true` + `shell: true` 启动,Windows 上子进程会**另开一个可见的控制台窗口**,扫描输出显示在那个窗口里,不会进 `output/web-trigger-*.log`(用 `npm --version` 按同样参数复现,日志为空)。关掉这个窗口就会中断扫描;扫描出错时窗口直接消失,错误也随之丢失,只能在终端里重跑 `npm run screen -- --profile both` 看。若要改成隐藏窗口并写日志,需要在命令里显式重定向,并用一次真实扫描验证。
 
 ## 6.3 Claude Desktop MCP 配置
 
@@ -451,7 +469,7 @@ C:\Users\SD\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claud
   "mcpServers": {
     "stockpit": {
       "command": "node",
-      "args": ["C:\\Users\\SD\\Desktop\\stockpit\\mcp-server\\dist\\index.js"],
+      "args": ["C:\\Users\\SD\\Projects\\stockpit-suite\\stockpit\\mcp-server\\dist\\index.js"],
       "env": {
         "COCKPIT_URL": "http://localhost:3000",
         "COCKPIT_PASSWORD": "<你的 ACCESS_PASSWORD>"
@@ -572,11 +590,20 @@ Atlas 扫描 → Supabase → 网页展示 → Claude Desktop 出辩护状 → �
   - 写入闸门:最初做过一版识别建议/预测的词法规则,两轮独立验证都没过(第二轮新写的 35 种建议说法漏掉 26 种,另有 16 条误杀)。按熔断规则停手后,使用者 2026-10-18 选定只保留机械规则(键名、枚举、修正案十一的主题要求、「立即买入/卖出」原文);判断留给 Radar 指令和人
   - 真实 390px 视口下零横向溢出
 
+**2026-10-25 整理与一体化**:
+- **目录收拢**:所有股票相关的东西收进 `C:\Users\SD\Projects\stockpit-suite\`(stockpit、atlas、v5-prompts、standalone-prompts、_secrets、_archive)。已核实为纯重复的 zip 和空文件夹进了回收站;其余只移动、不删除。完整记录在 `_archive\reorganize-2026-10-25.log`。
+- **路径同步**:Claude Desktop 的 MCP 配置、`.env.local` 的 `ATLAS_REPO_PATH`、7 个全局 skill 链接(改用目录联接,因为没有管理员权限建不了符号链接)、全部文档,都已改到新路径。Chrome 的 Social Extractor 扩展是从旧路径解压加载的,旧路径处留了一个隐藏联接让它继续生效。
+- **上手方式**:桌面「启动 Stockpit」启动器;`npm run dev` 只对本机开放;最终版使用指南 `使用指南.md`。
+- **v5 仓库补齐**:`v5-prompts` 补上了 Stock Research v5 正在用的项目指令(v1.9,之前只躺在 Downloads)、Dissent Auditor 的指令,以及 v1.8/v1.9 补丁说明。
+- **定时任务**:`scheduled-tasks/` 下写好了三个本地任务(§5.2),需要使用者在 Claude Desktop 里创建。
+- **验证**:搬家后 Atlas 347/347 测试通过;网站各页面 200;MCP 16 个工具可用;扫描按钮和报告回写都能在新路径找到 Atlas。`refresh-report` 出错退出时不再打印 libuv 断言。
+
 ## 9.2 待办(按优先级)
 
-1. **修笔记本电池**(见 §7.4)—— 在此之前避免跑完整扫描
+0. **开启定时任务(可选,推荐)** —— 按 `scheduled-tasks/README.md`:先运行 `register-stockpit-mcp.ps1`,再在 Claude Desktop 创建三个任务,第一次手动 Run now
+0b. **重贴 Atlas Red Team 的项目指令** —— 2026-10-25 给 `atlas/docs/projects/ATLAS_RED_TEAM_INSTRUCTIONS.md` 补了工具入口(只许调 `atlas_get_dissent_payload`)和保存一节;claude.ai 上那个项目要整段替换,一句话流程才完全有指令依据
+1. **修笔记本电池**(见 §7.4)—— 在此之前避免跑完整扫描;定时任务第一步就会检查是否接着电源
 2. **确认公网密码够强**(见 §7.1)—— 目前 Vercel 生成的网址外面还套着一层 Vercel 登录(SSO),多了一道门;但 Vercel 后台 `ACCESS_PASSWORD` 的强度只能在 Vercel 控制台里看
-3. **更新 claude.ai 的 Atlas Radar 项目** —— 换上新的 `ATLAS_RADAR_INSTRUCTIONS.md`,Knowledge 补传第四、五、六号修正案(§7.2)
 4. **BYOK(填 API key 在网页跑分析)** —— 已完整设计但未实施。要点:访客的 key **绝不能存进数据库**,只存浏览器 session、每次请求当头部发、后端用完即丢;访客产出的数据要与本人真实记录完全隔离;先只接 Anthropic 一家,架构留可插拔;Atlas 扫描不应开放给访客触发(它不是个性化的,而且触发扫描根本不需要 LLM key,拿 key 当门槛挡不住滥用)
 5. **观察哨升级条件**(修正案十三要求"标注升级触发条件")—— payload 目前不逐只列出观察哨,Radar 无从写起;要做得先给 payload 加观察哨明细
 6. **金丝雀测试**(`CANARY.md`、Atlas 的 PROJECT_SETUP_GUIDE)—— 还没放真实冻结样本
