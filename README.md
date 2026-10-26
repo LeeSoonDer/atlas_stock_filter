@@ -66,7 +66,7 @@ copy .env.example .env
 |------|------|
 | `npm run screen -- --profile <standard\|small_spec\|both>` | 跑一次完整筛选周期:宇宙构建 → 抓取(行情/OHLCV/内部人/机构/空头) → 技术指标 → 四桶检测器 → 基本面/板块/环境 → 选取器(候选+观察哨) → FMP 二次充实 → 生成 PAYLOAD/DISSENT PAYLOAD/HTML 报告 → 账本写入。`--profile` 必填,三选一。 |
 | `npm run ledger:backfill -- --ticker <SYMBOL> [--outcome repriced\|invalidated\|expired_no_event] [--elapsed-days N] [--screening-timestamp <iso>]` | 给某标的补记结果(前向验证账本回填)。不带 `--outcome`/`--elapsed-days` 时走交互式问答;带了则非交互(脚本化用)。同一标的有多条未回填记录时默认选最早一条,`--screening-timestamp` 可指定具体一条。**只追加,从不改写或删除已有账本行**。 |
-| `npm run ledger:stats` | 按四桶(momentum_breakout / volatility_compression_setup / oversold_reversal / institutional_accumulation_proxy)汇总总数/已回填数/待回填数/命中率/死亡率(月度复盘用)。无回填数据时命中率与死亡率诚实显示 `不可得`,不臆造 0%。 |
+| `npm run ledger:stats` | 按五桶(momentum_breakout / volatility_compression_setup / oversold_reversal / institutional_accumulation_proxy / sector_contagion)汇总总数/已回填数/待回填数/命中率/死亡率(月度复盘用)。无回填数据时命中率与死亡率诚实显示 `不可得`,不臆造 0%。 |
 | `npm run typecheck` | `tsc --noEmit`,不产生任何输出文件,纯类型检查。 |
 | `npm test` | `node:test` 跑全部 `src/**/*.test.ts`(零新增测试框架依赖)。 |
 | `npm run build` | `tsc -p tsconfig.json` 编译到 `dist/`(日常开发不需要,`npm run screen` 直接用 `tsx` 跑源码)。 |

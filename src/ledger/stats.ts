@@ -1,6 +1,12 @@
 import { BUCKET_ORDER } from "../screen/select/types.js";
 import type { OutcomeUpdateLedgerEntry, ScreeningLedgerEntry } from "./types.js";
 
+/** The 4 original buckets plus 修正案二十二's fifth, sector_contagion.
+ * BUCKET_ORDER itself stays 4 long because selectCandidates round-robins
+ * over it after contagion's reserved seats; the stats must still count a
+ * contagion candidate, or up to half of all seats go unmeasured. */
+export const STATS_BUCKETS = [...BUCKET_ORDER, "sector_contagion"] as const;
+
 export interface BucketStats {
   bucket: string;
   totalCandidates: number;
@@ -18,16 +24,17 @@ export interface BucketStats {
  * `opportunityType` (only ever set on candidate entries - a watchlist
  * entry with no full trigger has opportunityType===null and is
  * excluded, since it never became a thesis to measure). Always
- * includes all 4 known buckets (BUCKET_ORDER), even with zero data
+ * includes every known bucket (STATS_BUCKETS), even with zero data
  * (0/0, rates null) - DONE-WHEN requires "四桶汇总" (a 4-bucket
- * summary), not just whichever buckets happen to have entries yet.
+ * summary, five since 修正案二十二), not just whichever buckets happen
+ * to have entries yet.
  */
 export function computeLedgerStats(
   screenings: ScreeningLedgerEntry[],
   outcomes: OutcomeUpdateLedgerEntry[],
 ): BucketStats[] {
   const byBucket = new Map<string, ScreeningLedgerEntry[]>();
-  for (const bucket of BUCKET_ORDER) byBucket.set(bucket, []);
+  for (const bucket of STATS_BUCKETS) byBucket.set(bucket, []);
 
   for (const s of screenings) {
     if (s.opportunityType === null) continue;
@@ -35,7 +42,7 @@ export function computeLedgerStats(
     if (arr) arr.push(s);
   }
 
-  return BUCKET_ORDER.map((bucket): BucketStats => {
+  return STATS_BUCKETS.map((bucket): BucketStats => {
     const entries = byBucket.get(bucket) ?? [];
     const resolved = entries
       .map((s) => outcomes.filter((o) => o.symbol === s.symbol && o.refersToScreeningTimestamp === s.screeningTimestamp))

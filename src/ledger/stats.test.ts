@@ -28,10 +28,21 @@ function outcome(symbol: string, refersTo: string, repriced: boolean, invalidate
   };
 }
 
-test("always includes all 4 buckets, even with zero data", () => {
+test("always includes all 5 buckets (4 original + sector_contagion), even with zero data", () => {
   const stats = computeLedgerStats([], []);
-  assert.equal(stats.length, 4);
+  assert.equal(stats.length, 5);
+  assert.equal(stats[4].bucket, "sector_contagion");
   assert.ok(stats.every((s) => s.totalCandidates === 0 && s.hitRate === null && s.deathRate === null));
+});
+
+test("修正案二十二: a sector_contagion candidate is measured like any other bucket", () => {
+  const screenings = [screening("L", "t1", "sector_contagion"), screening("M", "t1", "sector_contagion")];
+  const outcomes = [outcome("L", "t1", true, false)];
+  const contagion = computeLedgerStats(screenings, outcomes).find((s) => s.bucket === "sector_contagion")!;
+  assert.equal(contagion.totalCandidates, 2);
+  assert.equal(contagion.resolvedCount, 1);
+  assert.equal(contagion.pendingCount, 1);
+  assert.equal(contagion.hitRate, 100);
 });
 
 test("hit rate and death rate computed only over resolved entries", () => {
