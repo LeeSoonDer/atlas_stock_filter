@@ -1,6 +1,6 @@
 # Stockpit — 完整系统手册
 
-> 快照日期:2026-09-04 初版;**2026-10-17 更新**(Lens/Dossier 并入、Outcomes 并入 Screener、Analyze 页删除、pm2 常驻移除、Atlas/Cockpit 搬到 `C:\Users\SD\Projects\`、补推工具 `push:run`、周报改为 triage-first 版式、Radar 市场层打通、`report_input.json`);**2026-10-25 更新**(全部收进 `C:\Users\SD\Projects\stockpit-suite\`、桌面启动器、只对本机开放、Claude Desktop 本地定时任务)。**日常怎么用看 [`使用指南.md`](使用指南.md),本手册讲的是"为什么"和"怎么运作"。** 这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
+> 快照日期:2026-09-04 初版;**2026-10-17 更新**(Lens/Dossier 并入、Outcomes 并入 Screener、Analyze 页删除、pm2 常驻移除、Atlas/Cockpit 搬到 `C:\Users\SD\Projects\`、补推工具 `push:run`、周报改为 triage-first 版式、Radar 市场层打通、`report_input.json`);**2026-10-25 更新**(全部收进 `C:\Users\SD\Projects\stockpit-suite\`、桌面启动器、只对本机开放、Claude Desktop 本地定时任务);**2026-11-07 更新**(当前模式改为单只分析 + Lens,Screener 隐藏,Atlas 和 Radar 暂停;ETF 接入单只分析流程)。**日常怎么用看 [`使用指南.md`](使用指南.md),本手册讲的是"为什么"和"怎么运作"。** 这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
 >
 > 这是**时间点快照**,不是自动更新的文档。任何具体细节在使用前都应对照实际代码复核,尤其是本文日期之后的改动。
 
@@ -240,7 +240,7 @@ npm test                                                  # 347 个单测
 
 | 路由 | 导航名 | 作用 |
 |---|---|---|
-导航共四个栏目:**Screener / Dossier / Journal / Watchlist**。
+导航现在是 **Journal / Dossier / Watchlist**。**Screener** 暂停期间隐藏(`lib/feature-flags.ts` 的 `SCREENER_ENABLED`),`/screener` 直接访问仍然可用,这个开关改回 `true` 就恢复原样。
 
 | 路由 | 导航名 | 作用 |
 |---|---|---|
@@ -252,10 +252,10 @@ npm test                                                  # 347 个单测
 | `/watchlist` | **Watchlist** | 追踪标的 + 实时报价 + 四类预警 |
 | `/report/[id]` | — | 单次深度分析的完整可打印视图(研究报告级 PDF) |
 | `/settings` | (右上角) | 旧版本地数据迁移 + JSON 导入(先删后写,会替换全部记录;导出在 `/journal`)。仓位参数仍可保存,但读取它的 `PositionCalculator` 只挂在 `RatingCardView` 里,而后者已没有页面引用 |
-| `/` | — | 重定向到 `/screener`。原 Analyze 页面已于 2026-09-06 删除;`/api/payload` 不受影响(MCP 用的是它),`components/analyze-form.tsx` 留作以后 BYOK 的落点 |
+| `/` | — | 重定向到 `/journal`(`SCREENER_ENABLED` 为 true 时是 `/screener`)。原 Analyze 页面已于 2026-09-06 删除;`/api/payload` 不受影响(MCP 用的是它),`components/analyze-form.tsx` 留作以后 BYOK 的落点 |
 | `/outcomes` | — | 重定向到 `/screener?tab=outcomes`,旧链接仍可用 |
 
-**命名说明**:原来叫 "Atlas" 和 "Journal"。Atlas 是代号,外人读不懂,改成行业标准词 **Screener**;Journal(交易日志)本身就是投资圈标准说法,保留。**ETF 页面已整体删除**。
+**命名说明**:原来叫 "Atlas" 和 "Journal"。Atlas 是代号,外人读不懂,改成行业标准词 **Screener**;Journal(交易日志)本身就是投资圈标准说法,保留。**ETF 页面已整体删除**;ETF 现在走单只分析流程,见 §5.0。
 
 ## 4.2 API 路由
 
@@ -347,7 +347,23 @@ npm test                                                  # 347 个单测
 
 # 第五部分:完整工作流
 
-## 5.1 一个周期长什么样
+## 5.0 当前模式:单只分析 + Lens(2026-11-07 起)
+
+使用者的决定:现阶段只用个股和 ETF 的单只分析(原 Cockpit)和 Lens。Atlas 和 Radar 暂停,不是废弃,§5.1、§5.2 描述的周流程恢复时照旧有效。
+
+| 步骤 | 操作 |
+|---|---|
+| 0 | 双击桌面「启动 Stockpit」,打开 Claude Desktop。不跑扫描,所以不用插电 |
+| 1 | Stock Research v5 项目:`Analyze XXX, full depth.`,个股和 ETF 同一句话 |
+| 2 | `build_payload` 先问 Yahoo 这是什么。个股发 `MODE: STOCK_DEEP_DIVE`。ETF(`quoteType === "ETF"`)发 `MODE: ETF_DEEP_DIVE` + `REGIME: ETF`,数据块换成规模、费率、股息率、持仓、板块分布、3 年和 5 年回报,不请求 FMP、内部人和财报日 |
+| 3 | Claude 按项目指令 v1.10 路由。ETF 走 08 + 09,输出层和 JSON 与个股相同,`save_analysis` 存进 Journal |
+| 4 | Journal 看报告;要动手时 Dissent Auditor 做反方审查;Watchlist 跟踪 |
+
+**ETF 为什么不需要改 Journal**:`parseRatingCard` 不校验 `mode` 和 `regime` 的取值,JSON 字段也没变,所以报告、Watchlist、反方审查、Re-analyze 都直接可用。代价是报告里的固定中文标签仍是公司口吻,比如"这是什么公司"、"公司发展";后者在 ETF 上指持仓质量,使用指南里写明了。
+
+**ETF 的数据边界**:持仓来自 Yahoo 的 topHoldings,通常是前 10 大;杠杆和合成基金持有掉期,Yahoo 不返回持仓,数据块会明说。资金流没有免费来源,数据块写 UNAVAILABLE,由 Claude 搜索或写不可得。`topHoldings.equityHoldings.priceToEarnings` 是倒数,不用;篮子市盈率取 `quote.trailingPE`。Lens 对 ETF 返回明确错误,基金没有 SEC 财报可以重建。
+
+## 5.1 一个周期长什么样(Screener 暂停中,恢复时适用)
 
 | 步骤 | 操作 | 自动化程度 |
 |---|---|---|
@@ -375,7 +391,7 @@ npm test                                                  # 347 个单测
 | 3 | 网页 `/dossier/XXX` 查看;完成度清单没满的档案会显示为未完成 |
 | 4 | 财报后:说"刷新 XXX 的证据"(`lens_refresh_evidence`)看变化报告;需要重新推理时先 `lens_get_dossier` 再按差异更新 |
 
-## 5.2 哪些步骤能自动化(2026-10-25 改写)
+## 5.2 哪些步骤能自动化(2026-10-25 改写,Radar 暂停中,恢复时适用)
 
 **以前的结论已经不成立。** 9 月写这一节时,一次 Claude 对话在结构上无法被后台无人触发,所以第 4、5 步(Radar、红队)必须有人在场。现在 Claude Desktop 有**本地定时任务**:按时间表在本机开一个 Claude Code 会话,用你的订阅(不是付费 API),能读写本地文件,也能用配置好的 MCP 工具([官方说明](https://code.claude.com/docs/en/desktop-scheduled-tasks))。原则五($0)和原则一(判断在 Claude 里、不在应用代码里)都不受影响。
 
@@ -598,11 +614,15 @@ Atlas 扫描 → Supabase → 网页展示 → Claude Desktop 出辩护状 → �
 - **定时任务**:`scheduled-tasks/` 下写好了三个本地任务(§5.2),需要使用者在 Claude Desktop 里创建。
 - **验证**:搬家后 Atlas 347/347 测试通过;网站各页面 200;MCP 16 个工具可用;扫描按钮和报告回写都能在新路径找到 Atlas。`refresh-report` 出错退出时不再打印 libuv 断言。
 
+**2026-11-07 这一批:**
+- **模式收敛**:网站只显示 Journal / Dossier / Watchlist,首页跳 Journal,Screener、Atlas、Radar 暂停(§5.0)。
+- **ETF 接入**:见 §5.0。v5 项目指令升到 v1.10,只新增 ETF 路线,个股文字和知识库不变。实测 SMH、SPY、DRAM、SOXL 走 ETF 路线,NVDA、ASTS 走个股路线,NVDA 数据块结构和改动前逐行标签一致。
+
 ## 9.2 待办(按优先级)
 
-0. **开启定时任务(可选,推荐)** —— 按 `scheduled-tasks/README.md`:先运行 `register-stockpit-mcp.ps1`,再在 Claude Desktop 创建三个任务,第一次手动 Run now
-0b. **重贴 Atlas Red Team 的项目指令** —— 2026-10-25 给 `atlas/docs/projects/ATLAS_RED_TEAM_INSTRUCTIONS.md` 补了工具入口(只许调 `atlas_get_dissent_payload`)和保存一节;claude.ai 上那个项目要整段替换,一句话流程才完全有指令依据
-1. **修笔记本电池**(见 §7.4)—— 在此之前避免跑完整扫描;定时任务第一步就会检查是否接着电源
+0. **贴 v5 项目指令 v1.10** —— Stock Research v5 项目的 Instructions 换成 `v5-prompts/project_instructions/PROJECT1_INSTRUCTIONS_v1.10.md` 全文,知识库不动。之后跑一只真实 ETF,确认 JSON 的 mode 是 `ETF_DEEP_DIVE` 且存进了 Journal。ETF 路线到这一步才算验证完
+0a. **恢复 Screener 时才需要做** —— 定时任务(`scheduled-tasks/README.md`)和重贴 Atlas Red Team 指令(2026-10-25 补了工具入口,只许调 `atlas_get_dissent_payload`)
+1. **笔记本电池** —— 已于 2026-11-01 更换,§7.4 记录的断电风险来自旧电池。恢复全市场扫描前,先确认一次插电满载是否稳定
 2. **确认公网密码够强**(见 §7.1)—— 目前 Vercel 生成的网址外面还套着一层 Vercel 登录(SSO),多了一道门;但 Vercel 后台 `ACCESS_PASSWORD` 的强度只能在 Vercel 控制台里看
 4. **BYOK(填 API key 在网页跑分析)** —— 已完整设计但未实施。要点:访客的 key **绝不能存进数据库**,只存浏览器 session、每次请求当头部发、后端用完即丢;访客产出的数据要与本人真实记录完全隔离;先只接 Anthropic 一家,架构留可插拔;Atlas 扫描不应开放给访客触发(它不是个性化的,而且触发扫描根本不需要 LLM key,拿 key 当门槛挡不住滥用)
 5. **观察哨升级条件**(修正案十三要求"标注升级触发条件")—— payload 目前不逐只列出观察哨,Radar 无从写起;要做得先给 payload 加观察哨明细

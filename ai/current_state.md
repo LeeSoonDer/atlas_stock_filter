@@ -597,8 +597,12 @@
   updated; Stockpit's /api/atlas/ledger and Outcomes panel match.
 
 ## In Progress
-- Nothing active. Waiting on the owner: a fresh full screen (manually, or
-  via the Claude Desktop scheduled task once they enable it).
+- PAUSED since 2026-11-07 (owner's decision): Stockpit runs as single-name
+  research plus Lens, and its Screener page is hidden behind
+  SCREENER_ENABLED in Stockpit's lib/feature-flags.ts. Nothing here was
+  changed or removed. When Atlas comes back: a fresh full screen is the
+  first step (the cache will be cold, so expect the slow path), and the
+  Red Team instructions may still need re-pasting into claude.ai.
 
 ## Next Priorities
 1. User should, at their own convenience, open a generated
