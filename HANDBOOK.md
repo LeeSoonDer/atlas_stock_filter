@@ -1,6 +1,6 @@
 # Stockpit — 完整系统手册
 
-> 快照日期:2026-09-04 初版;**2026-10-17 更新**(Lens/Dossier 并入、Outcomes 并入 Screener、Analyze 页删除、pm2 常驻移除、Atlas/Cockpit 搬到 `C:\Users\SD\Projects\`、补推工具 `push:run`、周报改为 triage-first 版式、Radar 市场层打通、`report_input.json`);**2026-10-25 更新**(全部收进 `C:\Users\SD\Projects\stockpit-suite\`、桌面启动器、只对本机开放、Claude Desktop 本地定时任务);**2026-11-07 更新**(当前模式改为单只分析 + Lens,Screener 隐藏,Atlas 和 Radar 暂停;ETF 接入单只分析流程)。**日常怎么用看 [`使用指南.md`](使用指南.md),本手册讲的是"为什么"和"怎么运作"。** 这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
+> 快照日期:2026-09-04 初版;**2026-10-17 更新**(Lens/Dossier 并入、Outcomes 并入 Screener、Analyze 页删除、pm2 常驻移除、Atlas/Cockpit 搬到 `C:\Users\SD\Projects\`、补推工具 `push:run`、周报改为 triage-first 版式、Radar 市场层打通、`report_input.json`);**2026-10-25 更新**(全部收进 `C:\Users\SD\Projects\stockpit-suite\`、桌面启动器、只对本机开放、Claude Desktop 本地定时任务);**2026-11-07 更新**(当前模式改为单只分析 + Lens,Screener 隐藏,Atlas 和 Radar 暂停;ETF 接入单只分析流程;网站改成隐身按需运行,不再需要启动器)。**日常怎么用看 [`使用指南.md`](使用指南.md),本手册讲的是"为什么"和"怎么运作"。** 这份文档的目的是让一个从未接触过这套系统的人(或 AI)读完之后,达到和系统作者同等的理解水平——不只是"有什么功能",而是"为什么是这样,哪里有边界,哪里踩过坑"。
 >
 > 这是**时间点快照**,不是自动更新的文档。任何具体细节在使用前都应对照实际代码复核,尤其是本文日期之后的改动。
 
@@ -86,7 +86,7 @@ Atlas 和 Stockpit 的代码里**零 LLM 调用**。它们只做三件事:拉取
 | **Stockpit** | `LeeSoonDer/stockpit`(private) | 网页产品(枢纽),含 Lens | `C:\Users\SD\Projects\stockpit-suite\stockpit` |
 | **Cockpit** | `LeeSoonDer/stock-research-cockpit` | **冻结存档**,原版单机工具 | `C:\Users\SD\Projects\stockpit-suite\_archive\cockpit-v1` |
 
-(2026-10-25 起三个仓库都在 `C:\Users\SD\Projects\stockpit-suite\` 下,和 v5 提示词库、归档放在一起;桌面上的「启动 Stockpit」是启动器。目录再搬家时 `ATLAS_REPO_PATH` 和 Claude Desktop 的 MCP 配置路径必须跟着改,见 §6.1、§6.3。)
+(2026-10-25 起三个仓库都在 `C:\Users\SD\Projects\stockpit-suite\` 下,和 v5 提示词库、归档放在一起;桌面上的「Stockpit」是入口。目录再搬家时 `ATLAS_REPO_PATH` 和 Claude Desktop 的 MCP 配置路径必须跟着改,见 §6.1、§6.3。)
 
 ### 为什么是三个而不是一个 monorepo
 
@@ -110,7 +110,7 @@ Atlas 和 Stockpit 的代码里**零 LLM 调用**。它们只做三件事:拉取
 │  控制平面 = 你的电脑(本地)                            │
 │                                                      │
 │  • Atlas CLI(跑筛选,几分钟到几小时)                  │
-│  • Stockpit 本地实例(按需 npm run dev,localhost:3000)│
+│  • Stockpit 本地实例(隐身按需启动,localhost:3000)    │
 │    └─ "Run screen now" 按钮只在这里出现               │
 │  • Claude Desktop + 本地 MCP server                  │
 │    └─ 所有 AI 推理在这里发生                          │
@@ -238,9 +238,7 @@ npm test                                                  # 347 个单测
 
 ## 4.1 页面结构
 
-| 路由 | 导航名 | 作用 |
-|---|---|---|
-导航现在是 **Journal / Dossier / Watchlist**。**Screener** 暂停期间隐藏(`lib/feature-flags.ts` 的 `SCREENER_ENABLED`),`/screener` 直接访问仍然可用,这个开关改回 `true` 就恢复原样。
+导航现在是 **Journal / Dossier / Watchlist**。Screener 暂停期间,`lib/feature-flags.ts` 的 `SCREENER_ENABLED` 为 false:导航不显示,`app/screener/layout.tsx` 把所有 `/screener` 网址跳到 `/journal`。恢复要把它和 `mcp-server/src/index.ts` 的 `ATLAS_TOOLS_ENABLED` 一起改回 `true`。下表里的 Screener 路由描述的是恢复后的样子。
 
 | 路由 | 导航名 | 作用 |
 |---|---|---|
@@ -251,9 +249,9 @@ npm test                                                  # 347 个单测
 | `/journal` | **Journal** | 深度分析记录(聚合/表格/卡片三视图、筛选、图表、导出) |
 | `/watchlist` | **Watchlist** | 追踪标的 + 实时报价 + 四类预警 |
 | `/report/[id]` | — | 单次深度分析的完整可打印视图(研究报告级 PDF) |
-| `/settings` | (右上角) | 旧版本地数据迁移 + JSON 导入(先删后写,会替换全部记录;导出在 `/journal`)。仓位参数仍可保存,但读取它的 `PositionCalculator` 只挂在 `RatingCardView` 里,而后者已没有页面引用 |
+| `/settings` | (右上角) | JSON 导入(先删后写,会替换全部记录;导出在 `/journal`,每周自动备份的 `journal.json` 也能导入),并显示上次自动备份的日期。旧版浏览器数据的迁移只在这个浏览器还存着旧数据时才显示。仓位参数的界面已移除:读取它的 `PositionCalculator` 只挂在 `RatingCardView` 里,而后者没有页面引用 |
 | `/` | — | 重定向到 `/journal`(`SCREENER_ENABLED` 为 true 时是 `/screener`)。原 Analyze 页面已于 2026-09-06 删除;`/api/payload` 不受影响(MCP 用的是它),`components/analyze-form.tsx` 留作以后 BYOK 的落点 |
-| `/outcomes` | — | 重定向到 `/screener?tab=outcomes`,旧链接仍可用 |
+| `/outcomes` | — | 重定向到 `/screener?tab=outcomes`,暂停期间最终落在 `/journal` |
 
 **命名说明**:原来叫 "Atlas" 和 "Journal"。Atlas 是代号,外人读不懂,改成行业标准词 **Screener**;Journal(交易日志)本身就是投资圈标准说法,保留。**ETF 页面已整体删除**;ETF 现在走单只分析流程,见 §5.0。
 
@@ -276,6 +274,8 @@ npm test                                                  # 347 个单测
 | `/api/atlas/refresh-report` | POST | 重渲染报告(**仅本地控制面**) |
 | `/api/atlas/ledger` | GET/POST | 账本统计与待回填 / 记录一条结果 |
 | `/api/watchlist` | GET/POST/DELETE | 追踪列表 |
+| `/api/watchlist/status` | GET | 每只的价格、涨跌、最近分析和预警(MCP 的 `watchlist_status` 用) |
+| `/api/backups/latest` | GET | 最新自动备份的日期(Settings 用,Vercel 上是 null) |
 | `/api/settings` | GET/PUT | 仓位参数 |
 | `/api/lens/companies` | GET | Dossier 列表(摘要列) |
 | `/api/lens/evidence` | POST | 从 SEC 等来源构建一家公司的证据包 |
@@ -306,18 +306,20 @@ npm test                                                  # 347 个单测
 - 网页回填写进 Supabase → Atlas 下次运行(或手动 `npm run ledger:sync`)**拉回本地追加**
 - 幂等靠 `natural_key`,时间戳**统一归一化成 epoch 毫秒**再比对——因为 Postgres 回显 timestamptz 是 `+00:00` 格式,本地 JSON 是 `Z` 格式,同一时刻但字符串不同,直接比字符串会导致每次同步都重复追加
 
-## 4.4 MCP 桥接(16 个工具)
+## 4.4 MCP 桥接(18 个工具,Radar 暂停期间列出 12 个)
 
-`mcp-server/` 是一个**薄 HTTP 代理**:自己不含任何业务逻辑,不做任何 LLM 调用,只是把 Claude Desktop 的工具调用转发给已经在跑的 Stockpit API。
+`mcp-server/` 是一个**薄 HTTP 代理**:自己不含任何业务逻辑,不做任何 LLM 调用,只是把 Claude Desktop 的工具调用转发给 Stockpit API。网站没在跑时它会先把网站启动起来(§6.2)。`ATLAS_TOOLS_ENABLED` 为 false 时,`atlas_*` 工具不出现在工具列表里。
 
 | 工具 | 作用 |
 |---|---|
-| `build_payload(ticker, depth?, question?)` | 取实时数据组装 V5 Payload |
-| `save_analysis(rating_json, ...)` | 保存分析结果到 Journal |
+| `build_payload(ticker, depth?, question?)` | 取实时数据组装 V5 Payload,自己识别 ETF,分析过的代码自动带 PRIOR 块 |
+| `save_analysis(rating_json, ...)` | 保存分析结果到 Journal,连同 `build_payload` 取到的原始数据块,返回 `report_url` |
 | `build_dissent_payload(entry_id)` | 生成隔离审查包 |
 | `save_dissent(entry_id, dissent_json)` | 保存反证结果 |
 | `list_journal(ticker?, limit?)` | 列出记录摘要 |
 | `get_entry(entry_id)` | 取单条完整记录 |
+| `watchlist_add(ticker, note?)` | 加入 Watchlist |
+| `watchlist_status()` | 读 Watchlist 的价格、涨跌和预警 |
 | `atlas_get_latest_payload()` | 取最新扫描的 ATLAS PAYLOAD |
 | `atlas_get_dissent_payload()` | 取最新扫描的隔离包 |
 | `atlas_save_radar_brief(symbol, content_text, grade?, probability?, confidence?, desc_text?)` | 保存辩护状 |
@@ -353,11 +355,17 @@ npm test                                                  # 347 个单测
 
 | 步骤 | 操作 |
 |---|---|
-| 0 | 双击桌面「启动 Stockpit」,打开 Claude Desktop。不跑扫描,所以不用插电 |
-| 1 | Stock Research v5 项目:`Analyze XXX, full depth.`,个股和 ETF 同一句话 |
+| 0 | 打开 Claude Desktop。网站按需自动启动(§6.2),不跑扫描所以不用插电 |
+| 1 | Stock Research v5 项目:只说代码,比如 `NVDA` 或 `SMH`。`NVDA quick` 是快速筛查 |
 | 2 | `build_payload` 先问 Yahoo 这是什么。个股发 `MODE: STOCK_DEEP_DIVE`。ETF(`quoteType === "ETF"`)发 `MODE: ETF_DEEP_DIVE` + `REGIME: ETF`,数据块换成规模、费率、股息率、持仓、板块分布、3 年和 5 年回报,不请求 FMP、内部人和财报日 |
-| 3 | Claude 按项目指令 v1.10 路由。ETF 走 08 + 09,输出层和 JSON 与个股相同,`save_analysis` 存进 Journal |
-| 4 | Journal 看报告;要动手时 Dissent Auditor 做反方审查;Watchlist 跟踪 |
+| 3 | Claude 按项目指令 v1.11 路由。ETF 走 08 + 09,输出层和 JSON 与个股相同。写完自动调 `save_analysis`,回复最后给报告链接 |
+| 4 | 点链接看报告;要动手时 Dissent Auditor 做反方审查;说 `加进 Watchlist` 或在报告页一键加入 |
+
+**上次分析自动带入**:`/api/payload` 没收到 `priorAnalysis` 时,自己取这个代码最新一条记录(`lib/prior-analysis.ts`),生成 PRIOR 块,含 `PRIOR ENTRY ID`。旧 Analyze 页面是在浏览器里拼这个块的,MCP 流程一直缺它,此前重新分析全靠 Claude 自己翻记录,价位型 thesis breaker 的自动判定也从没跑过。
+
+**原始数据块**:MCP 进程记住 `build_payload` 最后返回的文本,`save_analysis` 时一起存进 `payloadText`,存完就清掉,超过 24 小时的不用。这是 2026-11-07 才补上的:之前 6 条记录全部为空,反方审查包里写的是 `[original data block unavailable]`。MCP 重启后才保存的话这一项仍然为空,不影响保存。
+
+**1M / 3M**:`lib/server-outcome-autofill.ts` 取分析后第 30、90 天当天或之后第一个收盘价,今天的不算(盘中的"收盘价"还在变),过了窗口 7 天还没有数据就标记失败。之前用的是打开页面那一刻的现价,隔得越久偏差越大(8 月的 6 条记录偏差最大超过 25 个百分点)。
 
 **ETF 为什么不需要改 Journal**:`parseRatingCard` 不校验 `mode` 和 `regime` 的取值,JSON 字段也没变,所以报告、Watchlist、反方审查、Re-analyze 都直接可用。代价是报告里的固定中文标签仍是公司口吻,比如"这是什么公司"、"公司发展";后者在 ETF 上指持仓质量,使用指南里写明了。
 
@@ -367,7 +375,7 @@ npm test                                                  # 347 个单测
 
 | 步骤 | 操作 | 自动化程度 |
 |---|---|---|
-| 0 | 插电源;双击桌面「启动 Stockpit」(或在 `C:\Users\SD\Projects\stockpit-suite\stockpit` 运行 `npm run dev`);用完关掉那个窗口,见 §6.2 | 一次双击 |
+| 0 | 插电源。网站按需自动启动,见 §6.2 | 不用操作 |
 | 1 | 打开 `localhost:3000`(自动跳到 `/screener`),点「Run screen now」 | 一次点击 |
 | 2 | 等待(热缓存约 16 分钟) | 全自动,跑完导航出现未读圆点 |
 | 3 | 点开报告看候选 | 一次点击 |
@@ -453,7 +461,20 @@ npm test                                                  # 347 个单测
 
 ## 6.2 本地按需运行(pm2 常驻已于 2026-09-16 移除)
 
-日常用桌面上的 **「启动 Stockpit」**:双击后在那个窗口里运行 `npm run dev`,10 秒后自动打开浏览器;关掉窗口,网站就停了。等价的手动方式:
+**2026-11-07 起日常不需要启动任何东西。** `scripts/stockpit-server.mjs` 有两个子命令:
+
+- `ensure [--open]`:网站没在跑就隐身启动,等它就绪后退出。MCP 工具调用连不上网站时自动运行它(不带 `--open`);桌面「Stockpit」快捷方式通过 `scripts/open-stockpit.vbs` 运行它(带 `--open`,打开浏览器)。
+- `serve`:服务器本体,由 `ensure` 以 detached 方式启动,没有控制台窗口。源码比构建新就先 `next build`(约 40 秒),然后用生产模式跑自定义 HTTP 服务器,绑定 127.0.0.1:3000。**连续 60 分钟没有请求就退出**(`STOCKPIT_IDLE_MINUTES` 可改)。启动时如果距上次备份超过 7 天,把 Journal(能直接导回的格式)和 `watchlist_items`、`lens_dossiers`、`lens_snapshots`、`lens_leads`、`app_settings` 五张表写进 `stockpit-suite\_backups\<UTC 日期>\`,保留最近 8 份。每次备份的成败追加到 `_backups\backup.log`,Settings 页显示上次备份日期。
+
+实测:已构建时冷启动约 4 秒,占内存约 115 MB,没有窗口,局域网 IP 被拒绝。日志在 `stockpit\stockpit-server.log`,每次启动清空。
+
+`stockpit-server.lock` 保证同一时间只有一个启动流程:重建会超过工具调用的等待时间,下一次调用到来时第一个还在构建,第二个构建会把 `.next` 清掉。锁只覆盖启动过程,服务器开始监听就删除,超过 5 分钟的锁视为崩溃遗留。
+
+源码是否变新看 `app`、`components`、`lib` 和构建配置的修改时间,目录也算,这样删文件也能发现。重建失败时网站起不来,报错在日志里,这种情况只会在代码改到一半时出现。
+
+为什么是生产模式:省内存,也没有 `.next/dev` 缓存可写坏。为什么必须 `detached`:Windows 上 libuv 会把非 detached 的子进程放进一个 kill-on-close 的 Job,父进程一退出就杀掉子进程。代价是 `serve` 没有控制台,它自己再起的控制台子进程需要 `windowsHide`,否则会弹窗。
+
+开发时仍用下面的手动方式。两者共用 3000 端口,谁先起来谁占着:先结束隐身服务器再跑 `npm run dev`;反过来,`npm run dev` 开着时 `ensure` 会直接用它:
 
 ```powershell
 cd C:\Users\SD\Projects\stockpit-suite\stockpit
@@ -462,7 +483,7 @@ npm run dev        # 用完 Ctrl+C
 
 **2026-10-25 起 `npm run dev` 是 `next dev -H 127.0.0.1`**:只监听本机,同一 Wi-Fi 里的其他设备连不上。下面第 2 条安全顾虑因此大为缓解。已实测:浏览器访问 `localhost:3000`、MCP 的 node fetch 都正常,局域网 IP 会被拒绝。
 
-**为什么不再常驻**:
+**为什么不常驻**(以上隐身方式也遵守这条,闲置就退出):
 1. 常驻的 `next dev` 会带着文件监视器持续编译,吃 CPU 和内存,而这台机器的 16GB 内存本来就紧。
 2. 更重要的是安全:`.env.local` 里是线上 Supabase 的 `service_role` key,这个 key 绕过所有行级权限;而 `next dev` 默认监听所有网卡。在不可信的 Wi-Fi 下常驻,等于对局域网开着一个带生产库管理员凭据的服务。
 
@@ -497,7 +518,9 @@ C:\Users\SD\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claud
 
 注意:环境变量名仍是 `COCKPIT_*`(mcp-server 代码里读的就是这个名字),改名会失效。改完配置需**完全退出并重开** Claude Desktop。
 
-前提:Stockpit 必须正在运行(先 `npm run dev`)——mcp-server 自己没有数据,只是转发。服务器没开时,Claude Desktop 里的工具调用会报连接失败。服务器启动后不需要重启 Claude Desktop,每次工具调用都是现连。
+mcp-server 自己没有数据,只是转发。连接被拒绝时(说明请求没到服务器,重试不会写两次),它会运行 `stockpit-server.mjs ensure` 把网站拉起来再重试一次,最多等 50 秒;其他网络错误不重试。需要重新构建时可能等不及,工具会报错并让你一分钟后再试,构建在后台继续。改了 mcp-server 的代码要 `npm run build`,并重启 Claude Desktop。
+
+**直连 Vercel 目前走不通**:`*-soonders-projects.vercel.app` 都挡在 Vercel 登录后面,程序过不去;`stockpit.vercel.app` 是别人的网站,绝对不要把密码发过去。真要直连,需要先确认项目的公开生产域名和 Vercel 上的 `ACCESS_PASSWORD`,还要实测 Yahoo 是否接受 Vercel 的 IP。隐身本地运行已经解决了黑窗口问题,所以没有做。
 
 ## 6.4 Supabase 建表
 
@@ -615,12 +638,15 @@ Atlas 扫描 → Supabase → 网页展示 → Claude Desktop 出辩护状 → �
 - **验证**:搬家后 Atlas 347/347 测试通过;网站各页面 200;MCP 16 个工具可用;扫描按钮和报告回写都能在新路径找到 Atlas。`refresh-report` 出错退出时不再打印 libuv 断言。
 
 **2026-11-07 这一批:**
-- **模式收敛**:网站只显示 Journal / Dossier / Watchlist,首页跳 Journal,Screener、Atlas、Radar 暂停(§5.0)。
+- **模式收敛**:网站只显示 Journal / Dossier / Watchlist,首页跳 Journal,所有 `/screener` 网址跳回 Journal,MCP 不再列出 Atlas 工具。Screener、Atlas、Radar 暂停(§5.0)。
 - **ETF 接入**:见 §5.0。v5 项目指令升到 v1.10,只新增 ETF 路线,个股文字和知识库不变。实测 SMH、SPY、DRAM、SOXL 走 ETF 路线,NVDA、ASTS 走个股路线,NVDA 数据块结构和改动前逐行标签一致。
+- **不再需要启动器**:隐身按需运行(§6.2),桌面「Stockpit」替换了「启动 Stockpit」。
+- **减少手动步骤**:项目指令 v1.11,只说代码就开跑,自动保存并给报告链接;自动带上次分析;`watchlist_add`、`watchlist_status`;报告页三个按钮;每周自动备份取代备份提醒;密码输错当场提示;设置页去掉没用的项目。
+- **修质量问题**:反方审查一直没拿到原始数据块;1M / 3M 改按第 30、90 天的收盘价(§5.0)。
 
 ## 9.2 待办(按优先级)
 
-0. **贴 v5 项目指令 v1.10** —— Stock Research v5 项目的 Instructions 换成 `v5-prompts/project_instructions/PROJECT1_INSTRUCTIONS_v1.10.md` 全文,知识库不动。之后跑一只真实 ETF,确认 JSON 的 mode 是 `ETF_DEEP_DIVE` 且存进了 Journal。ETF 路线到这一步才算验证完
+0. **贴 v5 项目指令 v1.11 并重启 Claude Desktop** —— Stock Research v5 项目的 Instructions 换成 `v5-prompts/project_instructions/PROJECT1_INSTRUCTIONS_v1.11.md` 全文,知识库不动。之后跑一只真实 ETF,确认 JSON 的 mode 是 `ETF_DEEP_DIVE`、自动存进 Journal、回复最后有报告链接。ETF 路线到这一步才算验证完
 0a. **恢复 Screener 时才需要做** —— 定时任务(`scheduled-tasks/README.md`)和重贴 Atlas Red Team 指令(2026-10-25 补了工具入口,只许调 `atlas_get_dissent_payload`)
 1. **笔记本电池** —— 已于 2026-11-01 更换,§7.4 记录的断电风险来自旧电池。恢复全市场扫描前,先确认一次插电满载是否稳定
 2. **确认公网密码够强**(见 §7.1)—— 目前 Vercel 生成的网址外面还套着一层 Vercel 登录(SSO),多了一道门;但 Vercel 后台 `ACCESS_PASSWORD` 的强度只能在 Vercel 控制台里看

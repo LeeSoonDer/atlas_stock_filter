@@ -13,7 +13,7 @@
    * ATLAS_AMENDMENT_NO4_THEME_RADAR.md(足迹锚定、主题雷达、全板块扫描、长白话总结,新指令的市场层章节以它为准)
    * ATLAS_AMENDMENT_NO5_SIGNAL_REFINEMENT.md(信用闸、期权诚实标注、宽度只描述不预测、集中度不给仓位)
    * ATLAS_AMENDMENT_NO6_CONTAGION.md(筛选宽容度、板块传导叙事验证、市场叙事扫描)
-4. 在 Claude Desktop 里用:先双击桌面「启动 Stockpit」让网站跑起来,stockpit 的 MCP 工具就可用了,然后说"读取最新扫描并出辩护状"
+4. 在 Claude Desktop 里用:网站会按需自动启动,直接说"读取最新扫描并出辩护状"。Atlas 工具在 Radar 暂停期间不列出,恢复方法见 `stockpit\使用指南.md` 附录 A
 
 ## Project 2: Atlas Red Team
 
